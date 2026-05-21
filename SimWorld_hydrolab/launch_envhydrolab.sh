@@ -24,19 +24,19 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM EXIT
 # Define standard paths
-PX4_ROOT=
-SOFTWARE_ROOT=
+PX4_ROOT=/home/mateusz/AbsoluteEdge/SImulationENV/PX4-Autopilot
+SOFTWARE_ROOT=/home/mateusz/AbsoluteEdge/Software/PX4
 
 echo "========================================"
-echo "1. Generating Randomized Logistics World"
+echo "1. Generating Randomized HydroLab World"
 echo "========================================"
-python3 randomize_world.py
+python3 build_world.py
 
 echo ""
 echo "========================================"
 echo "2. Setting Environment Variables"
 echo "========================================"
-export PX4_GZ_WORLD=last_mile_logistics_randomized
+export PX4_GZ_WORLD=hydrolab_built
 echo "PX4_GZ_WORLD is set to: $PX4_GZ_WORLD"
 
 echo ""
