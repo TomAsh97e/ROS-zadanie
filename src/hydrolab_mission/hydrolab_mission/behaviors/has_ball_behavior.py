@@ -1,6 +1,5 @@
 import py_trees
 
-
 class HasBall(py_trees.behaviour.Behaviour):
     def __init__(self, name, node, color):
         super().__init__(name)
@@ -8,6 +7,6 @@ class HasBall(py_trees.behaviour.Behaviour):
         self.color = color
 
     def update(self):
-        if self.node.has_collected_ball(self.color):
-            return py_trees.common.Status.SUCCESS
+        # TODO: Check if the ball of the specified color is already grabbed
+        # Return SUCCESS if already grabbed, otherwise FAILURE
         return py_trees.common.Status.FAILURE

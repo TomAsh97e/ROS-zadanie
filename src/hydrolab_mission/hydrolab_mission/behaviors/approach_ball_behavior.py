@@ -1,6 +1,5 @@
 import py_trees
 
-
 class ApproachBall(py_trees.behaviour.Behaviour):
     def __init__(self, name, node, color):
         super().__init__(name)
@@ -16,7 +15,7 @@ class ApproachBall(py_trees.behaviour.Behaviour):
         self.holding_center = False
         self.node.publish_ball_mode(f'hover_{self.color}')
         self.node.get_logger().info(
-            f'Approaching {self.color} ball with gimbal auto-tracking...'
+            f'Approaching {self.color} ball with continuous visual tracking...'
         )
 
     def update(self):
@@ -48,14 +47,12 @@ class ApproachBall(py_trees.behaviour.Behaviour):
 
         error_u = abs(0.5 - float(center_uv[0]))
         error_v = abs(0.5 - float(center_uv[1]))
-        gimbal_down_ready = self.node.is_gimbal_pointing_down_for_descent()
-        ready_to_descend = (
+        centered = (
             error_u <= self.node.approach_center_tolerance_u
             and error_v <= self.node.approach_center_tolerance_v
-            and gimbal_down_ready
         )
 
-        if ready_to_descend:
+        if centered:
             if self.centered_since_ns is None:
                 self.centered_since_ns = now_ns
             elif (
@@ -65,9 +62,8 @@ class ApproachBall(py_trees.behaviour.Behaviour):
             ):
                 self.holding_center = True
                 self.node.get_logger().info(
-                    f'{self.color.capitalize()} ball aligned for descent.'
+                    f'{self.color.capitalize()} ball centered. Holding stable target.'
                 )
-                return py_trees.common.Status.SUCCESS
         else:
             self.centered_since_ns = None
             self.holding_center = False
@@ -76,12 +72,11 @@ class ApproachBall(py_trees.behaviour.Behaviour):
             f'Approach {self.color}: '
             f'center_uv=({center_uv[0]:.3f},{center_uv[1]:.3f}), '
             f'error=({error_u:.3f},{error_v:.3f}), '
-            f'gimbal=(pitch={self.node.current_gimbal_pitch_deg:.1f}, yaw={self.node.current_gimbal_yaw_deg:.1f}, down_ready={gimbal_down_ready}), '
-            f'ready_to_descend={ready_to_descend}',
+            f'holding={self.holding_center}',
             throttle_duration_sec=1.0,
         )
         return py_trees.common.Status.RUNNING
 
     def terminate(self, new_status):
-        if new_status == py_trees.common.Status.FAILURE:
+        if new_status != py_trees.common.Status.RUNNING:
             self.node.publish_ball_mode('stop')

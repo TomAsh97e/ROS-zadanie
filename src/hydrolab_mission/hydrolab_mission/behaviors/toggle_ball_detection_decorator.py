@@ -17,9 +17,9 @@ class ToggleBallDetection(py_trees.decorators.Decorator):
         return self.decorated.status
 
     def initialise(self):
-        # SearchForBalls now enables detection only after the drone reaches
-        # the search point, so we keep initialise() passive here.
-        return
+        # Called when the child is about to be ticked for the first time
+        self.node.get_logger().info(f"Enabling ball detection for color: {self.color}")
+        self.node.request_ball_detection(self.color)
 
     def terminate(self, new_status):
         # Called when the child finishes (SUCCESS, FAILURE) or is cancelled (INVALID)

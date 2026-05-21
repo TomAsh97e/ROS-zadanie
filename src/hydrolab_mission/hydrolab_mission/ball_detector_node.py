@@ -1,11 +1,7 @@
 import json
 import math
-import os
 from threading import Lock
 import time
-
-os.environ.setdefault('QT_QPA_PLATFORM', 'xcb')
-os.environ.setdefault('QT_QPA_FONTDIR', '/usr/share/fonts/truetype/dejavu')
 
 import cv2
 from gz.msgs10.image_pb2 import Image
@@ -22,7 +18,7 @@ class BallDetectorNode(Node):
     def __init__(self):
         super().__init__('ball_detector')
 
-        self.declare_parameter('world_name', 'last_mile_logistics_randomized')
+        self.declare_parameter('world_name', 'hydrolab_built')
         self.declare_parameter('camera_model_name', 'x500_gimbal_0')
         self.declare_parameter('camera_topic', '')
         self.declare_parameter('publish_interval_s', 0.1)
@@ -129,17 +125,10 @@ class BallDetectorNode(Node):
             image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
             detections = self.detect_balls(image_bgr, requested_color)
-            debug_detections = detections
-            if self.show_debug_view and requested_color != 'all':
-                debug_detections = self.detect_balls(image_bgr, 'all')
             now_ns = time.time_ns()
 
             if self.show_debug_view:
-                self.show_debug_frame(
-                    image_bgr,
-                    debug_detections,
-                    requested_color,
-                )
+                self.show_debug_frame(image_bgr, detections, requested_color)
 
             if now_ns - self.last_publish_ns >= int(
                 self.publish_interval_s * 1e9
@@ -295,26 +284,11 @@ class BallDetectorNode(Node):
             center_x, center_y = detection['center_px']
             radius_px = int(detection['radius_px'])
             color_bgr = self.debug_color(detection['color'])
-            bounding_box = detection.get('bounding_box_px', [0, 0, 0, 0])
-            if len(bounding_box) == 4:
-                bb_x, bb_y, bb_w, bb_h = bounding_box
-                cv2.rectangle(
-                    debug_frame,
-                    (int(bb_x), int(bb_y)),
-                    (int(bb_x + bb_w), int(bb_y + bb_h)),
-                    color_bgr,
-                    2,
-                )
-                text_origin = (int(bb_x), max(int(bb_y) - 8, 20))
-            else:
-                text_origin = (center_x + 10, center_y)
-
             cv2.circle(debug_frame, (center_x, center_y), radius_px, color_bgr, 2)
-            cv2.circle(debug_frame, (center_x, center_y), 4, color_bgr, -1)
             cv2.putText(
                 debug_frame,
                 detection['color'],
-                text_origin,
+                (center_x + 10, center_y),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
                 color_bgr,
@@ -324,7 +298,7 @@ class BallDetectorNode(Node):
 
         cv2.putText(
             debug_frame,
-            f'Request: {requested_color} | View: all colors',
+            f'Request: {requested_color}',
             (20, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,

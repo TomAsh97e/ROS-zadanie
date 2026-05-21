@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>last_mile_logistics_mission</name>
+  <name>hydrolab_mission</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>HydroLab ball pickup and delivery mission (ROS 2 + PX4).</description>
   <maintainer email="matblaz12345@gmail.com">mateusz</maintainer>
   <license>TODO: License declaration</license>
 

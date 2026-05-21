@@ -14,7 +14,7 @@ def generate_launch_description():
     )
 
     pilot_node = Node(
-        package='last_mile_logistics_mission',
+        package='hydrolab_mission',
         executable='pilot',
         name='pilot_node',
         output='screen',

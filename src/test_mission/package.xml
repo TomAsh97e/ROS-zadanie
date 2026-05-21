@@ -3,7 +3,7 @@
 <package format="3">
   <name>test_mission</name>
   <version>0.0.0</version>
-  <description>Simple barrel drop mission for the last mile logistics world.</description>
+  <description>Simple barrel drop mission for the HydroLab world.</description>
   <maintainer email="codex@example.com">codex</maintainer>
   <license>TODO: License declaration</license>
 
@@ -11,7 +11,7 @@
   <depend>px4_msgs</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
-  <exec_depend>last_mile_logistics_mission</exec_depend>
+  <exec_depend>hydrolab_mission</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

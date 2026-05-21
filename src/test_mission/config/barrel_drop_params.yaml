@@ -20,7 +20,7 @@ barrel_drop_mission:
     hidden_ball_base_x_m: 1000.0
     hidden_ball_base_y_m: 1000.0
     hidden_ball_z_m: -10.0
-    world_name: last_mile_logistics_randomized
+    world_name: hydrolab_built
     drone_model_name: x500_depth_0
     ball_model_names:
       - ball_red

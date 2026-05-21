@@ -21,7 +21,8 @@ Uruchomienie:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd /home/ludek/projects/Simulation_last_mile_logistics
+cd /home/mateusz/AbsoluteEdge/SImulation_Hydrolab
+colcon build --packages-select hydrolab_mission test_mission --symlink-install
 source install/setup.bash
 ros2 launch test_mission barrel_drop_test.launch.py
 ```

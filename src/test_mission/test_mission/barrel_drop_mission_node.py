@@ -30,7 +30,7 @@ class BarrelDropMissionNode(Node):
         self.declare_parameter('hidden_ball_base_x_m', 1000.0)
         self.declare_parameter('hidden_ball_base_y_m', 1000.0)
         self.declare_parameter('hidden_ball_z_m', -10.0)
-        self.declare_parameter('world_name', 'last_mile_logistics_randomized')
+        self.declare_parameter('world_name', 'hydrolab_built')
         self.declare_parameter('drone_model_name', 'x500_depth_0')
         self.declare_parameter(
             'ball_model_names',

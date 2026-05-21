@@ -3,7 +3,7 @@ import os
 
 from setuptools import find_packages, setup
 
-package_name = 'last_mile_logistics_mission'
+package_name = 'hydrolab_mission'
 
 setup(
     name=package_name,
@@ -37,14 +37,20 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'pilot = last_mile_logistics_mission.pilot_node:main',
-            'behavior_tree = last_mile_logistics_mission.mission_behavior_tree_node:main',
+            'pilot = hydrolab_mission.pilot_node:main',
+            'behavior_tree = hydrolab_mission.mission_behavior_tree_node:main',
+            'raycasted_approach_coordinator_node = '
+            'hydrolab_mission.raycasted_approach_coordinator_node:main',
+            'hover_controller = '
+            'hydrolab_mission.hover_controller_node:main',
             'gimbal_controller = '
-            'last_mile_logistics_mission.gimbal_controller_node:main',
+            'hydrolab_mission.gimbal_controller_node:main',
+            'gimbal_tracker = '
+            'hydrolab_mission.gimbal_tracker_node:main',
             'ball_detector = '
-            'last_mile_logistics_mission.ball_detector_node:main',
+            'hydrolab_mission.ball_detector_node:main',
             'ball_grabber = '
-            'last_mile_logistics_mission.ball_grabber_node:main',
+            'hydrolab_mission.ball_grabber_node:main',
         ],
     },
 )

@@ -1,7 +1,8 @@
 import json
 import math
 
-from geometry_msgs.msg import Point, Vector3
+from geometry_msgs.msg import Point
+from geometry_msgs.msg import Vector3
 from px4_msgs.msg import (
     OffboardControlMode,
     TrajectorySetpoint,
@@ -21,32 +22,32 @@ class PilotNode(Node):
 
         self.declare_parameter('max_altitude_m', 3.0)
         self.declare_parameter('max_speed_m_s', 1.0)
-        self.declare_parameter('transit_speed_m_s', 1.0)
-        self.declare_parameter('control_period_s', 0.1)
-        self.declare_parameter('ball_hover_error_gain', 0.06)
-        self.declare_parameter('ball_hover_deadband', 0.04)
-        self.declare_parameter('ball_hover_max_step_m', 0.12)
-        self.declare_parameter('ball_hover_step_scale_min', 0.35)
-        self.declare_parameter('ball_hover_error_boost_max', 1.0)
-        self.declare_parameter('ball_hover_error_boost_reference', 0.25)
-        self.declare_parameter('gimbal_step_scale_reference_deg', 35.0)
-        self.declare_parameter('gimbal_down_pitch_deg', -90.0)
-        self.declare_parameter('gimbal_down_yaw_deg', 0.0)
-        self.declare_parameter('gimbal_guidance_gain_m_per_deg', 0.005)
-        self.declare_parameter('gimbal_guidance_deadband_deg', 5.0)
+        self.declare_parameter('hover_contract_topic', '/mission/hover_contract')
+        self.declare_parameter('ibvs_velocity_topic', '/pilot/ibvs_velocity_cmd')
+        self.declare_parameter('ibvs_cmd_timeout_s', 0.5)
+        self.declare_parameter('ibvs_max_speed_m_s', 0.8)
+        self.declare_parameter('ball_hover_error_gain', 0.18)
+        self.declare_parameter('ball_hover_deadband', 0.05)
+        self.declare_parameter('descent_min_speed_m_s', 0.2)
 
         self.max_altitude_m = float(self.get_parameter('max_altitude_m').value)
         self.max_speed_m_s = max(
             float(self.get_parameter('max_speed_m_s').value),
             0.1,
         )
-        self.transit_speed_m_s = max(
-            float(self.get_parameter('transit_speed_m_s').value),
-            self.max_speed_m_s,
+        self.hover_contract_topic = str(
+            self.get_parameter('hover_contract_topic').value
         )
-        self.control_period_s = max(
-            float(self.get_parameter('control_period_s').value),
-            0.02,
+        self.ibvs_velocity_topic = str(
+            self.get_parameter('ibvs_velocity_topic').value
+        )
+        self.ibvs_cmd_timeout_s = max(
+            float(self.get_parameter('ibvs_cmd_timeout_s').value),
+            0.05,
+        )
+        self.ibvs_max_speed_m_s = max(
+            float(self.get_parameter('ibvs_max_speed_m_s').value),
+            0.05,
         )
         self.ball_hover_error_gain = max(
             float(self.get_parameter('ball_hover_error_gain').value),
@@ -56,40 +57,15 @@ class PilotNode(Node):
             float(self.get_parameter('ball_hover_deadband').value),
             0.0,
         )
-        self.ball_hover_max_step_m = max(
-            float(self.get_parameter('ball_hover_max_step_m').value),
-            0.02,
+        self.descent_min_speed_m_s = max(
+            float(self.get_parameter('descent_min_speed_m_s').value),
+            0.05,
         )
-        self.ball_hover_step_scale_min = min(
-            max(float(self.get_parameter('ball_hover_step_scale_min').value), 0.05),
-            1.0,
+        self.descent_min_speed_m_s = min(
+            self.descent_min_speed_m_s,
+            self.max_speed_m_s,
         )
-        self.ball_hover_error_boost_max = max(
-            float(self.get_parameter('ball_hover_error_boost_max').value),
-            1.0,
-        )
-        self.ball_hover_error_boost_reference = max(
-            float(self.get_parameter('ball_hover_error_boost_reference').value),
-            0.01,
-        )
-        self.gimbal_step_scale_reference_deg = max(
-            float(self.get_parameter('gimbal_step_scale_reference_deg').value),
-            1.0,
-        )
-        self.gimbal_down_pitch_deg = float(
-            self.get_parameter('gimbal_down_pitch_deg').value
-        )
-        self.gimbal_down_yaw_deg = float(
-            self.get_parameter('gimbal_down_yaw_deg').value
-        )
-        self.gimbal_guidance_gain_m_per_deg = max(
-            float(self.get_parameter('gimbal_guidance_gain_m_per_deg').value),
-            0.001,
-        )
-        self.gimbal_guidance_deadband_deg = max(
-            float(self.get_parameter('gimbal_guidance_deadband_deg').value),
-            0.0,
-        )
+        self.control_period_s = 0.1
 
         self.mode_publisher = self.create_publisher(
             OffboardControlMode,
@@ -136,26 +112,32 @@ class PilotNode(Node):
             self.ball_detection_callback,
             10,
         )
-        self.gimbal_attitude_subscriber = self.create_subscription(
+        self.hover_contract_subscriber = self.create_subscription(
+            String,
+            self.hover_contract_topic,
+            self.hover_contract_callback,
+            10,
+        )
+        self.ibvs_velocity_subscriber = self.create_subscription(
             Vector3,
-            '/gimbal/current_orientation_deg',
-            self.gimbal_attitude_callback,
+            self.ibvs_velocity_topic,
+            self.ibvs_velocity_callback,
             10,
         )
 
         self.current_target = [0.0, 0.0, 0.0]
         self.requested_target = None
         self.home_position = None
-        self.current_position = None
         self.current_yaw = 0.0
-        self.current_gimbal_pitch_deg = self.gimbal_down_pitch_deg
-        self.current_gimbal_yaw_deg = self.gimbal_down_yaw_deg
-        self.has_gimbal_attitude = False
         self.heartbeat_counter = 0
         self.vehicle_connected = False
         self.ball_mode = 'idle'
         self.last_ball_log_ns = 0
         self.last_hover_log_ns = 0
+        self.hover_contract_active = False
+        self.hover_tracking_mode = 'idle'
+        self.ibvs_velocity_cmd = [0.0, 0.0, 0.0]
+        self.last_ibvs_cmd_time_s = 0.0
 
         self.timer = self.create_timer(
             self.control_period_s,
@@ -163,8 +145,8 @@ class PilotNode(Node):
         )
         self.get_logger().info(
             f'Pilot Node initialized. max_altitude={self.max_altitude_m:.2f} m, '
-            f'precision_speed={self.max_speed_m_s:.2f} m/s, '
-            f'transit_speed={self.transit_speed_m_s:.2f} m/s'
+            f'max_speed={self.max_speed_m_s:.2f} m/s, '
+            f'ibvs_topic={self.ibvs_velocity_topic}'
         )
 
     def ball_mode_callback(self, msg):
@@ -215,100 +197,59 @@ class PilotNode(Node):
         self.get_logger().info(f'Pilot sees balls: {summary}')
         self.last_ball_log_ns = now_ns
 
-    def gimbal_attitude_callback(self, msg):
-        self.current_gimbal_pitch_deg = float(msg.y)
-        self.current_gimbal_yaw_deg = float(msg.z)
-        self.has_gimbal_attitude = True
+    def hover_contract_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            self.get_logger().warn(
+                'Received invalid hover contract JSON payload.',
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        if not isinstance(payload, dict):
+            self.get_logger().warn(
+                'Ignoring hover contract payload with non-object root.',
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        self.hover_contract_active = bool(payload.get('active', False))
+        self.hover_tracking_mode = str(
+            payload.get('tracking_mode', 'idle')
+        ).strip().lower()
+
+    def ibvs_velocity_callback(self, msg):
+        self.ibvs_velocity_cmd = [
+            self.clamp(float(msg.x), -self.ibvs_max_speed_m_s, self.ibvs_max_speed_m_s),
+            self.clamp(float(msg.y), -self.ibvs_max_speed_m_s, self.ibvs_max_speed_m_s),
+            self.clamp(float(msg.z), -self.ibvs_max_speed_m_s, self.ibvs_max_speed_m_s),
+        ]
+        self.last_ibvs_cmd_time_s = self.get_clock().now().nanoseconds / 1e9
 
     def request_hover_over_ball(self, detection, color_name):
-        if self.current_position is None:
+        if self.home_position is None:
             return
 
         center_uv = detection.get('center_uv', [0.5, 0.5])
         if len(center_uv) != 2:
             return
 
-        image_right_error = float(center_uv[0]) - 0.5
-        image_down_error = float(center_uv[1]) - 0.5
-        image_error_magnitude = math.hypot(image_right_error, image_down_error)
-        forward_step = 0.0
-        right_step = 0.0
+        error_u = 0.5 - float(center_uv[0])
+        error_v = 0.5 - float(center_uv[1])
 
-        off_down_deg = 0.0
-        if self.has_gimbal_attitude:
-            off_down_deg = max(
-                self.current_gimbal_pitch_deg - self.gimbal_down_pitch_deg,
-                0.0,
-            )
+        if abs(error_u) < self.ball_hover_deadband:
+            error_u = 0.0
+        if abs(error_v) < self.ball_hover_deadband:
+            error_v = 0.0
 
-        step_scale_ratio = min(
-            off_down_deg / self.gimbal_step_scale_reference_deg,
-            1.0,
-        )
-        step_scale = (
-            self.ball_hover_step_scale_min
-            + (1.0 - self.ball_hover_step_scale_min) * step_scale_ratio
-        )
-        error_boost_ratio = min(
-            image_error_magnitude / self.ball_hover_error_boost_reference,
-            1.0,
-        )
-        error_boost = (
-            1.0
-            + (self.ball_hover_error_boost_max - 1.0) * error_boost_ratio
-        )
-        effective_hover_gain = self.ball_hover_error_gain * step_scale * error_boost
-        effective_max_step_m = max(
-            self.ball_hover_max_step_m * step_scale * error_boost,
-            0.02,
-        )
+        if self.requested_target is None:
+            self.requested_target = self.home_position.copy()
 
-        if self.has_gimbal_attitude:
-            if off_down_deg > self.gimbal_guidance_deadband_deg:
-                step_magnitude = (
-                    off_down_deg * self.gimbal_guidance_gain_m_per_deg
-                )
-                bearing_rad = math.radians(
-                    self.current_gimbal_yaw_deg - self.gimbal_down_yaw_deg
-                )
-                forward_step += math.cos(bearing_rad) * step_magnitude
-                right_step += math.sin(bearing_rad) * step_magnitude
-
-        if abs(image_right_error) < self.ball_hover_deadband:
-            image_right_correction = 0.0
-        else:
-            image_right_correction = image_right_error * effective_hover_gain
-        if abs(image_down_error) < self.ball_hover_deadband:
-            image_forward_correction = 0.0
-        else:
-            image_forward_correction = -image_down_error * effective_hover_gain
-
-        forward_step += image_forward_correction
-        right_step += image_right_correction
-
-        step_magnitude = math.hypot(forward_step, right_step)
-        if step_magnitude > effective_max_step_m:
-            scale = effective_max_step_m / step_magnitude
-            forward_step *= scale
-            right_step *= scale
-
-        yaw = self.current_yaw
-        world_x_step = (
-            math.cos(yaw) * forward_step
-            - math.sin(yaw) * right_step
-        )
-        world_y_step = (
-            math.sin(yaw) * forward_step
-            + math.cos(yaw) * right_step
-        )
-
-        hover_target = self.current_position.copy()
-        hover_target[0] += world_x_step
-        hover_target[1] += world_y_step
-        if self.requested_target is not None:
-            hover_target[2] = self.requested_target[2]
-        elif self.home_position is not None:
-            hover_target[2] = self.home_position[2]
+        hover_target = self.requested_target.copy()
+        hover_target[0] += error_u * self.ball_hover_error_gain
+        hover_target[1] += error_v * self.ball_hover_error_gain
+        hover_target[2] = self.requested_target[2]
         hover_target = self._sanitize_target(hover_target)
         self.requested_target = hover_target
 
@@ -317,10 +258,6 @@ class PilotNode(Node):
             self.get_logger().info(
                 f'Hovering over {color_name} ball: '
                 f'center_uv=({center_uv[0]:.3f},{center_uv[1]:.3f}), '
-                f'gimbal=(pitch={self.current_gimbal_pitch_deg:.1f}, yaw={self.current_gimbal_yaw_deg:.1f}, off_down={off_down_deg:.1f}), '
-                f'step_scale={step_scale:.2f}, '
-                f'error_boost={error_boost:.2f}, '
-                f'world_step=({world_x_step:.2f}, {world_y_step:.2f}), '
                 f'target=({hover_target[0]:.2f}, {hover_target[1]:.2f}, {hover_target[2]:.2f})'
             )
             self.last_hover_log_ns = now_ns
@@ -342,24 +279,22 @@ class PilotNode(Node):
         )
 
     def odometry_callback(self, msg):
-        self.current_position = [
+        if self.vehicle_connected:
+            return
+
+        self.vehicle_connected = True
+        self.home_position = [
             float(msg.position[0]),
             float(msg.position[1]),
             float(msg.position[2]),
         ]
+        self.current_target = self.home_position.copy()
 
         q = msg.q
         self.current_yaw = math.atan2(
             2.0 * (q[0] * q[3] + q[1] * q[2]),
             1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]),
         )
-
-        if self.vehicle_connected:
-            return
-
-        self.vehicle_connected = True
-        self.home_position = self.current_position.copy()
-        self.current_target = self.home_position.copy()
 
         if self.requested_target is None:
             self.requested_target = self.home_position.copy()
@@ -377,7 +312,7 @@ class PilotNode(Node):
         self.publish_control_mode()
         self.publish_vehicle_constraints()
 
-        if self.vehicle_connected:
+        if self.vehicle_connected and not self.is_hover_velocity_mode_active():
             self.update_position_setpoint()
 
         self.publish_setpoint()
@@ -391,8 +326,9 @@ class PilotNode(Node):
 
     def publish_control_mode(self):
         msg = OffboardControlMode()
-        msg.position = True
-        msg.velocity = False
+        hover_velocity_mode = self.is_hover_velocity_mode_active()
+        msg.position = not hover_velocity_mode
+        msg.velocity = hover_velocity_mode
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
@@ -404,9 +340,8 @@ class PilotNode(Node):
     def publish_vehicle_constraints(self):
         msg = VehicleConstraints()
         msg.timestamp = self.timestamp_us()
-        speed_limit_m_s = self.active_speed_limit_m_s()
-        msg.speed_up = speed_limit_m_s
-        msg.speed_down = speed_limit_m_s
+        msg.speed_up = self.max_speed_m_s
+        msg.speed_down = self.max_speed_m_s
         msg.want_takeoff = bool(
             self.home_position is not None
             and self.requested_target is not None
@@ -421,9 +356,13 @@ class PilotNode(Node):
         sanitized_target = self._sanitize_target(self.requested_target)
         self.requested_target = sanitized_target
 
+        if sanitized_target[2] > self.current_target[2]:
+            self.current_target = self.compute_next_descent_setpoint(sanitized_target)
+            return
+
         delta = [sanitized_target[i] - self.current_target[i] for i in range(3)]
         distance = math.sqrt(sum(component * component for component in delta))
-        max_step = self.active_speed_limit_m_s() * self.control_period_s
+        max_step = self.max_speed_m_s * self.control_period_s
 
         if distance <= max_step or distance == 0.0:
             self.current_target = sanitized_target.copy()
@@ -435,15 +374,50 @@ class PilotNode(Node):
             for i in range(3)
         ]
 
-    def active_speed_limit_m_s(self):
-        if self.ball_mode.startswith('hover_'):
-            return self.max_speed_m_s
-        return self.transit_speed_m_s
+    def compute_next_descent_setpoint(self, requested_target):
+        next_target = self.current_target.copy()
+        horizontal_delta_x = requested_target[0] - self.current_target[0]
+        horizontal_delta_y = requested_target[1] - self.current_target[1]
+        horizontal_distance = math.sqrt(
+            (horizontal_delta_x * horizontal_delta_x)
+            + (horizontal_delta_y * horizontal_delta_y)
+        )
+
+        max_horizontal_step = self.max_speed_m_s * self.control_period_s
+        if horizontal_distance <= max_horizontal_step or horizontal_distance == 0.0:
+            next_target[0] = requested_target[0]
+            next_target[1] = requested_target[1]
+        else:
+            horizontal_scale = max_horizontal_step / horizontal_distance
+            next_target[0] = self.current_target[0] + horizontal_delta_x * horizontal_scale
+            next_target[1] = self.current_target[1] + horizontal_delta_y * horizontal_scale
+
+        current_height_m = max(0.0, self.home_position[2] - self.current_target[2])
+        descent_ratio = 0.0
+        if self.max_altitude_m > 1e-6:
+            descent_ratio = self.clamp(
+                current_height_m / self.max_altitude_m,
+                0.0,
+                1.0,
+            )
+        descent_speed_m_s = self.descent_min_speed_m_s + (
+            (self.max_speed_m_s - self.descent_min_speed_m_s) * descent_ratio
+        )
+        max_descent_step = descent_speed_m_s * self.control_period_s
+
+        vertical_delta = requested_target[2] - self.current_target[2]
+        next_target[2] = self.current_target[2] + min(vertical_delta, max_descent_step)
+        return next_target
 
     def publish_setpoint(self):
         msg = TrajectorySetpoint()
-        msg.position = self.current_target
-        msg.velocity = [math.nan, math.nan, math.nan]
+        if self.is_hover_velocity_mode_active():
+            velocity_cmd = self.get_active_ibvs_velocity()
+            msg.position = [math.nan, math.nan, math.nan]
+            msg.velocity = velocity_cmd
+        else:
+            msg.position = self.current_target
+            msg.velocity = [math.nan, math.nan, math.nan]
         msg.acceleration = [math.nan, math.nan, math.nan]
         msg.jerk = [math.nan, math.nan, math.nan]
         msg.yaw = self.current_yaw
@@ -487,6 +461,22 @@ class PilotNode(Node):
             sanitized_target[2] = max(sanitized_target[2], min_z)
 
         return sanitized_target
+
+    def is_hover_velocity_mode_active(self):
+        return self.hover_contract_active and self.hover_tracking_mode == 'hover'
+
+    def get_active_ibvs_velocity(self):
+        now_s = self.get_clock().now().nanoseconds / 1e9
+        if (
+            self.last_ibvs_cmd_time_s > 0.0
+            and (now_s - self.last_ibvs_cmd_time_s) <= self.ibvs_cmd_timeout_s
+        ):
+            return self.ibvs_velocity_cmd
+        return [0.0, 0.0, 0.0]
+
+    @staticmethod
+    def clamp(value, lower, upper):
+        return max(lower, min(upper, value))
 
     def timestamp_us(self):
         return int(self.get_clock().now().nanoseconds / 1000)
