@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sdf version="1.9">
-  <world name="hydrolab_randomized">
+  <world name="hydrolab_built">
     <physics type="ode">
       <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
@@ -142,6 +142,28 @@
             <ambient>0.15 0.15 0.15 1</ambient>
             <diffuse>0.15 0.15 0.15 1</diffuse>
             <specular>0.05 0.05 0.05 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+
+    <model name="lake">
+      <static>true</static>
+      <pose>-200.0 0.0 0 0 0 0</pose>
+      <link name="link">
+        <visual name="lake_visual">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>50.0</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.1 0.4 0.9 0.85</ambient>
+            <diffuse>0.1 0.4 0.9 0.85</diffuse>
+            <specular>0.2 0.2 0.2 0.85</specular>
           </material>
         </visual>
       </link>

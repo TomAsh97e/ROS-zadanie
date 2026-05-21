@@ -37,7 +37,10 @@ echo "========================================"
 echo "2. Setting Environment Variables"
 echo "========================================"
 export PX4_GZ_WORLD=hydrolab_built
+# x,y,z,roll,pitch,yaw — on start_base pad (top z=0.1 m; x500 legs ~0.012 m above spawn origin)
+export PX4_GZ_MODEL_POSE="0,0,0.1,0,0,0"
 echo "PX4_GZ_WORLD is set to: $PX4_GZ_WORLD"
+echo "PX4_GZ_MODEL_POSE is set to: $PX4_GZ_MODEL_POSE"
 
 echo ""
 echo "========================================"
@@ -73,7 +76,12 @@ echo "========================================"
 cd "$SOFTWARE_ROOT"
 # 2. FIXED PYTHON EXECUTION
 # Directly targeting the python engine inside the venv avoids all activation bugs!
-~/px4_venv/bin/python3 camera_viewer.py &
+source /opt/ros/jazzy/setup.bash  # Change 'humble' if you use a different ROS 2 version
+source /home/mateusz/AbsoluteEdge/SImulation_Hydrolab/install/setup.bash  # Source your ROS 2 workspace (if you have one)
+
+# 2. Launch the Pilot and State Machine in the background (&)
+ros2 launch hydrolab_mission system_launch.py &
+
 
 echo ""
 echo "==========================================================="

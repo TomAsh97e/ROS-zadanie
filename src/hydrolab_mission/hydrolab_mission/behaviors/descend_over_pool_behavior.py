@@ -1,11 +1,11 @@
 import py_trees
 
 
-class DescendOverBall(py_trees.behaviour.Behaviour):
-    def __init__(self, name, node, color):
+class DescendOverPool(py_trees.behaviour.Behaviour):
+    def __init__(self, name, node, pool_color):
         super().__init__(name)
         self.node = node
-        self.color = color.lower()
+        self.pool_color = pool_color.lower()
 
     def initialise(self):
         self.node.set_gimbal_tracker_enabled(False)
@@ -21,8 +21,8 @@ class DescendOverBall(py_trees.behaviour.Behaviour):
             'tracking_mode': 'descent',
             'target': {
                 'kind': 'object',
-                'label': 'ball',
-                'variant': self.color,
+                'label': 'pool',
+                'variant': self.pool_color,
                 'source': 'vision/ball_detector',
             },
             'constraints': {
@@ -41,14 +41,14 @@ class DescendOverBall(py_trees.behaviour.Behaviour):
         target_altitude_m = float(self.node.descent_target_altitude_m)
         if current_altitude_m <= target_altitude_m:
             self.node.get_logger().info(
-                f'Final descent complete for {self.color}: '
+                f'Descent over pool complete for {self.pool_color}: '
                 f'altitude={current_altitude_m:.2f} m '
                 f'(target <= {target_altitude_m:.2f} m).'
             )
             return py_trees.common.Status.SUCCESS
 
         self.node.get_logger().info(
-            f'Final descent active for {self.color}: '
+            f'Descent over pool active for {self.pool_color}: '
             f'altitude={current_altitude_m:.2f} m, '
             f'target={target_altitude_m:.2f} m.',
             throttle_duration_sec=1.0,

@@ -11,17 +11,26 @@ import py_trees
 
 from hydrolab_mission.behaviors.check_odometry_behavior import CheckOdometry
 from hydrolab_mission.behaviors.takeoff_behavior import Takeoff
-from hydrolab_mission.behaviors.search_for_balls_behavior import SearchForBalls
+from hydrolab_mission.behaviors.fly_to_pool_behavior import FlyToPool
 
 from hydrolab_mission.behaviors.check_time_limit_behavior import CheckTimeLimit
 from hydrolab_mission.behaviors.return_to_launch_behavior import ReturnToLaunch
-from hydrolab_mission.behaviors.has_ball_behavior import HasBall
-from hydrolab_mission.behaviors.initial_approach_ball_behavior import InitialApproachBall
-from hydrolab_mission.behaviors.descend_over_ball_behavior import DescendOverBall
-from hydrolab_mission.behaviors.grab_ball_behavior import GrabBall
-from hydrolab_mission.behaviors.verify_ball_grabbed_behavior import VerifyBallGrabbed
-from hydrolab_mission.behaviors.delivery_behavior import Delivery
-from hydrolab_mission.behaviors.toggle_ball_detection_decorator import ToggleBallDetection
+from hydrolab_mission.behaviors.has_water_sample_behavior import HasWaterSample
+from hydrolab_mission.behaviors.approach_pool_behavior import ApproachPool
+from hydrolab_mission.behaviors.descend_over_pool_behavior import DescendOverPool
+from hydrolab_mission.behaviors.collect_water_sample_behavior import CollectWaterSample
+from hydrolab_mission.behaviors.verify_sample_collected_behavior import VerifySampleCollected
+from hydrolab_mission.behaviors.return_to_base_behavior import ReturnToBase
+from hydrolab_mission.behaviors.toggle_pool_detection_decorator import TogglePoolDetection
+
+POOL_COLORS = ('red', 'green', 'blue', 'yellow')
+DEFAULT_POOL_XY = {
+    'red': (25.0, 0.0),
+    'green': (50.0, 5.0),
+    'blue': (75.0, -2.0),
+    'yellow': (100.0, 6.0),
+}
+
 
 class MissionBehaviorTree(Node):
     def __init__(self):
@@ -30,6 +39,7 @@ class MissionBehaviorTree(Node):
         # Declare parameters
         self.declare_parameter('takeoff_height_m', 2.0)
         self.declare_parameter('forward_distance_m', 5.0)
+        self.declare_parameter('position_tolerance_m', 0.35)
         self.declare_parameter('approach_center_tolerance_u', 0.08)
         self.declare_parameter('approach_center_tolerance_v', 0.08)
         self.declare_parameter('approach_lost_timeout_s', 2.0)
@@ -42,10 +52,22 @@ class MissionBehaviorTree(Node):
         self.declare_parameter('descent_step_m', 0.15)
         self.declare_parameter('descent_command_period_s', 0.4)
         self.declare_parameter('descent_target_altitude_m', 0.0)
+        self.declare_parameter(
+            'pool_color_order',
+            ['red', 'green', 'blue', 'yellow'],
+        )
+        self.declare_parameter('final_pool_color', 'green')
+        for color, (default_x, default_y) in DEFAULT_POOL_XY.items():
+            self.declare_parameter(f'pool_{color}_x_m', default_x)
+            self.declare_parameter(f'pool_{color}_y_m', default_y)
 
         # Retrieve parameters
         self.takeoff_height_m = self.get_parameter('takeoff_height_m').value
         self.forward_distance_m = self.get_parameter('forward_distance_m').value
+        self.position_tolerance_m = max(
+            float(self.get_parameter('position_tolerance_m').value),
+            0.05,
+        )
         self.approach_center_tolerance_u = float(
             self.get_parameter('approach_center_tolerance_u').value
         )
@@ -82,6 +104,15 @@ class MissionBehaviorTree(Node):
         self.descent_target_altitude_m = float(
             self.get_parameter('descent_target_altitude_m').value
         )
+        self.pool_color_order = [
+            str(color).strip().lower()
+            for color in self.get_parameter('pool_color_order').value
+        ]
+        self.final_pool_color = str(
+            self.get_parameter('final_pool_color').value
+        ).strip().lower()
+        self.mission_pool_colors = self._pool_colors_up_to_final()
+        self.pool_locations = self._load_pool_locations()
 
         self.target_publisher = self.create_publisher(Point, '/pilot/target_position', 10)
         self.ball_detection_request_pub = self.create_publisher(String, '/vision/ball_detection/request', 10)
@@ -140,7 +171,38 @@ class MissionBehaviorTree(Node):
         self.tree = py_trees.trees.BehaviourTree(self.root)
         
         self.timer = self.create_timer(0.2, self.tick_tree)
-        self.get_logger().info("Behavior Tree Node Initialized.")
+        self.get_logger().info(
+            'Behavior Tree Node Initialized. '
+            f'Pool mission colors: {" -> ".join(self.mission_pool_colors)} '
+            f'(final: {self.final_pool_color}).'
+        )
+
+    def _pool_colors_up_to_final(self):
+        if not self.pool_color_order:
+            self.get_logger().warn('pool_color_order is empty; defaulting to ["yellow"].')
+            return ['yellow']
+
+        if self.final_pool_color not in self.pool_color_order:
+            self.get_logger().warn(
+                f"final_pool_color '{self.final_pool_color}' not in pool_color_order "
+                f'{self.pool_color_order}; running full color order.'
+            )
+            return list(self.pool_color_order)
+
+        final_index = self.pool_color_order.index(self.final_pool_color)
+        return self.pool_color_order[: final_index + 1]
+
+    def _load_pool_locations(self):
+        return {
+            color: (
+                float(self.get_parameter(f'pool_{color}_x_m').value),
+                float(self.get_parameter(f'pool_{color}_y_m').value),
+            )
+            for color in POOL_COLORS
+        }
+
+    def get_pool_xy(self, pool_color):
+        return self.pool_locations.get(str(pool_color).strip().lower())
 
     def create_behavior_tree(self):
         root = py_trees.composites.Selector(name="Root", memory=False)
@@ -163,48 +225,87 @@ class MissionBehaviorTree(Node):
         takeoff = Takeoff(name=f"Takeoff to {self.takeoff_height_m}m", node=self, target_z=-self.takeoff_height_m)
         main_mission.add_child(takeoff)
 
-        # Steps 2, 3, 4: Ball Logic (Selectors)
-        for color in [ "Red", "Blue","Yellow"]:
-            ball_logic = py_trees.composites.Selector(name=f"{color} Ball Logic", memory=False)
-            
-            # Condition: Do we already have the Ball?
-            has_ball = HasBall(name=f"Has {color} Ball?", node=self, color=color)
-            
-            # Sequence: Ball Pickup
-            pickup_sequence = py_trees.composites.Sequence(name=f"{color} Ball Pickup", memory=True)
-            search = SearchForBalls(name=f"Search {color}", node=self, forward_distance=self.forward_distance_m, search_z=-self.takeoff_height_m)
-            approach_sequence = py_trees.composites.Sequence(
-                name=f"{color} Approach Sequence",
+        # Pool legs (order and stop color come from mission params)
+        for color in self.mission_pool_colors:
+            display_color = color.capitalize()
+            pool_logic = py_trees.composites.Selector(
+                name=f"{display_color} Pool Logic",
+                memory=False,
+            )
+
+            has_sample = HasWaterSample(
+                name=f"Has Water Sample ({display_color})?",
+                node=self,
+                pool_color=display_color,
+            )
+
+            sampling_sequence = py_trees.composites.Sequence(
+                name=f"{display_color} Pool Sampling",
                 memory=True,
             )
-            initial_approach = InitialApproachBall(
-                name=f"Initial {color} Approach",
+            pool_xy = self.get_pool_xy(color)
+            fly_to_pool = FlyToPool(
+                name=f"Fly To {display_color} Pool",
                 node=self,
-                color=color.lower(),
+                forward_distance=self.forward_distance_m,
+                search_z=-self.takeoff_height_m,
+                pool_x_m=pool_xy[0] if pool_xy else None,
+                pool_y_m=pool_xy[1] if pool_xy else None,
             )
-            descent = DescendOverBall(
-                name=f"Descent {color}",
+            approach_pool = ApproachPool(
+                name=f"Approach {display_color} Pool",
                 node=self,
-                color=color.lower(),
+                pool_color=color,
             )
-            approach_sequence.add_children([initial_approach, descent])
-            grab = GrabBall(name=f"Grab {color}")
-            verify = VerifyBallGrabbed(name=f"Verify {color}")
-            
-            pickup_sequence.add_children([search, approach_sequence, grab, verify])
-            
-            # Decorate the sequence to toggle ball detection ON when started and OFF when finished
-            toggled_sequence = ToggleBallDetection(name=f"Toggle {color} Detection", child=pickup_sequence, node=self, color=color)
-            
-            # Decorator: Retry (Max 3 attempts) over the toggled sequence
-            retry_decorator = py_trees.decorators.Retry(name=f"Retry {color} Pickup", child=toggled_sequence, num_failures=3)
-            
-            ball_logic.add_children([has_ball, retry_decorator])
-            main_mission.add_child(ball_logic)
+            descend_over_pool = DescendOverPool(
+                name=f"Descend Over {display_color} Pool",
+                node=self,
+                pool_color=color,
+            )
+            approach_sequence = py_trees.composites.Sequence(
+                name=f"{display_color} Pool Approach",
+                memory=True,
+            )
+            approach_sequence.add_children([approach_pool, descend_over_pool])
+            pool_tracking_sequence = py_trees.composites.Sequence(
+                name=f"{display_color} Pool Tracking",
+                memory=True,
+            )
+            pool_tracking_sequence.add_children(
+                [fly_to_pool, approach_sequence]
+            )
+            pool_tracking_with_detection = TogglePoolDetection(
+                name=f"Detect {display_color} Pool",
+                child=pool_tracking_sequence,
+                node=self,
+                pool_color=color,
+            )
+            collect_sample = CollectWaterSample(
+                name=f"Collect Sample ({display_color})"
+            )
+            verify_sample = VerifySampleCollected(
+                name=f"Verify Sample ({display_color})"
+            )
 
-        # Step 5: Delivery
-        delivery = Delivery(name="Delivery Sequence")
-        main_mission.add_child(delivery)
+            sampling_sequence.add_children(
+                [
+                    pool_tracking_with_detection,
+                    collect_sample,
+                    verify_sample,
+                ]
+            )
+
+            retry_decorator = py_trees.decorators.Retry(
+                name=f"Retry {display_color} Sampling",
+                child=sampling_sequence,
+                num_failures=3,
+            )
+
+            pool_logic.add_children([has_sample, retry_decorator])
+            main_mission.add_child(pool_logic)
+
+        return_to_base = ReturnToBase(name="Return To Base")
+        main_mission.add_child(return_to_base)
         
         root.add_children([safety_sequence, main_mission])
         return root
@@ -221,7 +322,7 @@ class MissionBehaviorTree(Node):
         
         # Notify the console prominently when transitioning to or from LOCKED state
         if self.blackboard.gimbal_status != "STATUS_LOCKED" and new_status == "STATUS_LOCKED":
-            self.get_logger().info("\n" + "="*55 + "\n>>> 🎯 DRONE LOCKED ON TO THE BALL TARGET! 🎯 <<<\n" + "="*55)
+            self.get_logger().info("\n" + "="*55 + "\n>>> 🎯 DRONE LOCKED ON TO THE POOL TARGET! 🎯 <<<\n" + "="*55)
         elif self.blackboard.gimbal_status == "STATUS_LOCKED" and new_status != "STATUS_LOCKED" and new_status != "STATUS_IDLE":
             self.get_logger().warn("\n" + "="*55 + "\n>>> ⚠️ DRONE LOST LOCK ON TARGET! ⚠️ <<<\n" + "="*55)
             

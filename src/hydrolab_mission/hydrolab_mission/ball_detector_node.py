@@ -13,7 +13,7 @@ from std_msgs.msg import String
 
 
 class BallDetectorNode(Node):
-    SUPPORTED_REQUESTS = {'red', 'blue', 'yellow', 'all'}
+    SUPPORTED_REQUESTS = {'red', 'green', 'blue', 'yellow', 'all'}
 
     def __init__(self):
         super().__init__('ball_detector')
@@ -152,7 +152,7 @@ class BallDetectorNode(Node):
     def detect_balls(self, image_bgr, requested_color):
         hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
         colors_to_process = (
-            ['red', 'blue', 'yellow']
+            ['red', 'green', 'blue', 'yellow']
             if requested_color == 'all'
             else [requested_color]
         )
@@ -185,11 +185,17 @@ class BallDetectorNode(Node):
             lower = np.array([90, 70, 30], dtype=np.uint8)
             upper = np.array([135, 255, 255], dtype=np.uint8)
             mask = cv2.inRange(hsv, lower, upper)
-        else:
-            # Broadened Saturation and Value for yellow
+        elif color_name == 'green':
+            # Pool / turf green; hue above yellow band to reduce cross-talk
+            lower = np.array([42, 70, 30], dtype=np.uint8)
+            upper = np.array([88, 255, 255], dtype=np.uint8)
+            mask = cv2.inRange(hsv, lower, upper)
+        elif color_name == 'yellow':
             lower = np.array([18, 70, 40], dtype=np.uint8)
             upper = np.array([38, 255, 255], dtype=np.uint8)
             mask = cv2.inRange(hsv, lower, upper)
+        else:
+            mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
 
         # Use a smaller kernel for OPEN to not erase small/distant balls
         kernel_open = np.ones((2, 2), dtype=np.uint8)
@@ -314,6 +320,8 @@ class BallDetectorNode(Node):
             return (0, 0, 255)
         if color_name == 'blue':
             return (255, 0, 0)
+        if color_name == 'green':
+            return (0, 255, 0)
         return (0, 255, 255)
 
     def destroy_node(self):

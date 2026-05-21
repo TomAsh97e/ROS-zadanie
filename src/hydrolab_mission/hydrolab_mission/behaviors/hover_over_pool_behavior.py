@@ -1,11 +1,11 @@
 import py_trees
 
 
-class HoverOverBall(py_trees.behaviour.Behaviour):
-    def __init__(self, name, node, color):
+class HoverOverPool(py_trees.behaviour.Behaviour):
+    def __init__(self, name, node, pool_color):
         super().__init__(name)
         self.node = node
-        self.color = color.lower()
+        self.pool_color = pool_color.lower()
 
     def initialise(self):
         self.node.set_gimbal_tracker_enabled(False)
@@ -15,8 +15,8 @@ class HoverOverBall(py_trees.behaviour.Behaviour):
             'tracking_mode': 'hover',
             'target': {
                 'kind': 'object',
-                'label': 'ball',
-                'variant': self.color,
+                'label': 'pool',
+                'variant': self.pool_color,
                 'source': 'vision/ball_detector',
             },
             'constraints': {
@@ -28,8 +28,8 @@ class HoverOverBall(py_trees.behaviour.Behaviour):
             'tracking_mode': 'hover',
             'target': {
                 'kind': 'object',
-                'label': 'ball',
-                'variant': self.color,
+                'label': 'pool',
+                'variant': self.pool_color,
                 'source': 'vision/ball_detector',
             },
             'constraints': {
@@ -38,7 +38,7 @@ class HoverOverBall(py_trees.behaviour.Behaviour):
         })
 
     def update(self):
-        # TODO: Implement fine hover/centering phase.
+        # TODO: Fine hover/centering over pool for photography or sampling.
         return py_trees.common.Status.RUNNING
 
     def terminate(self, new_status):

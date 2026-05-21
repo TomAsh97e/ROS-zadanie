@@ -141,6 +141,7 @@ class RaycastedApproachCoordinatorNode(Node):
         self.last_detection_time_s = 0.0
 
         self.last_log_ns = 0
+        self.last_fallback_log_ns = 0
 
         self.timer = self.create_timer(
             self.control_interval_s,
@@ -270,24 +271,36 @@ class RaycastedApproachCoordinatorNode(Node):
             self.mul_mat3_vec3(self.body_to_world, self.camera_offset_body),
         )
 
-        if self.downward_distance_m is None:
-            return
+        downward_altitude_m = None
+        if self.downward_distance_m is not None:
+            # Tilt compensation:
+            # project measured slant range from body-down axis onto world-down.
+            downward_axis_world = self.mul_mat3_vec3(
+                self.body_to_world,
+                self.downward_sensor_axis_body,
+            )
+            downward_axis_world_z = downward_axis_world[2]
+            if downward_axis_world_z > 1e-4:
+                candidate_altitude = self.downward_distance_m * downward_axis_world_z
+                if candidate_altitude > 1e-4:
+                    downward_altitude_m = candidate_altitude
 
-        # Tilt compensation:
-        # project measured slant range from body-down axis onto world-down.
-        downward_axis_world = self.mul_mat3_vec3(
-            self.body_to_world,
-            self.downward_sensor_axis_body,
-        )
-        downward_axis_world_z = downward_axis_world[2]
-        if downward_axis_world_z <= 1e-4:
-            return
+        if downward_altitude_m is None:
+            # Fallback when range sensor is unavailable or invalid:
+            # approximate ground plane at home altitude.
+            downward_altitude_m = self.home_position[2] - camera_origin_world[2]
+            if downward_altitude_m <= 1e-4:
+                return
 
-        downward_altitude_m = self.downward_distance_m * downward_axis_world_z
-        if downward_altitude_m <= 1e-4:
-            return
+            now_ns = self.get_clock().now().nanoseconds
+            if now_ns - self.last_fallback_log_ns >= int(2e9):
+                self.get_logger().warn(
+                    'Using home-altitude fallback for raycast ground plane; '
+                    'distance sensor data unavailable.',
+                )
+                self.last_fallback_log_ns = now_ns
 
-        ground_z = self.current_position[2] + downward_altitude_m
+        ground_z = camera_origin_world[2] + downward_altitude_m
         distance_to_plane_z = ground_z - camera_origin_world[2]
         if distance_to_plane_z <= 1e-4:
             return
@@ -315,12 +328,17 @@ class RaycastedApproachCoordinatorNode(Node):
 
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_log_ns >= int(1e9):
+            downward_distance_text = (
+                f'{self.downward_distance_m:.2f}'
+                if self.downward_distance_m is not None
+                else 'n/a'
+            )
             self.get_logger().info(
                 'Raycast target: '
                 f'uv=({self.target_center_uv[0]:.3f},{self.target_center_uv[1]:.3f}), '
                 f'pitch={pitch_deg:.1f} deg, '
                 f'yaw={yaw_deg:.1f} deg, '
-                f'downward_distance={self.downward_distance_m:.2f} m, '
+                f'downward_distance={downward_distance_text} m, '
                 f'projected_altitude={downward_altitude_m:.2f} m, '
                 f'd={t:.2f} m, '
                 f'target=({target_x:.2f}, {target_y:.2f}, {target_z:.2f})'

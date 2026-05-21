@@ -1,9 +1,10 @@
 import py_trees
 
-class GrabBall(py_trees.behaviour.Behaviour):
+
+class ReturnToBase(py_trees.behaviour.Behaviour):
     def __init__(self, name):
         super().__init__(name)
 
     def update(self):
-        # TODO: Implement logic to actuate grabber
+        # TODO: Fly straight back to base and deliver the sample.
         return py_trees.common.Status.SUCCESS

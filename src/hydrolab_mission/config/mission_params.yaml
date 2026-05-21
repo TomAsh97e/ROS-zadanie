@@ -50,7 +50,22 @@ hover_controller:
 
 mission_behavior_tree:
   ros__parameters:
-    takeoff_height_m: 3.0
+    pool_color_order:
+      - red
+      - green
+      - blue
+      - yellow
+    final_pool_color: green
+    # Pool centers in Gazebo world frame (m); match SimWorld_hydrolab/build_world.py
+    pool_red_x_m: 4.0
+    pool_red_y_m: 25.0
+    pool_green_x_m: 5.0
+    pool_green_y_m: 50.0
+    pool_blue_x_m: -2.0
+    pool_blue_y_m: 75.0
+    pool_yellow_x_m: 6.0
+    pool_yellow_y_m: 100.0
+    takeoff_height_m: 2.0
     forward_distance_m: 4.0
     position_tolerance_m: 0.35
     gimbal_down_pitch_deg: -90.0

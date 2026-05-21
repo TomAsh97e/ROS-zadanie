@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-WORLD_NAME = "hydrolab_randomized"
+WORLD_NAME = "hydrolab_built"
 
 LOCAL_BASE_FILE = SCRIPT_DIR / "hydrolab_base.sdf"
 LOCAL_RANDOMIZED_FILE = SCRIPT_DIR / "hydrolab_built.sdf"
@@ -117,6 +117,34 @@ def create_circular_pool(
     return xml
 
 
+def create_lake_disc(name, x, y, radius=50.0, thickness=0.02, color=(0.1, 0.4, 0.9, 0.85)):
+    half_thickness = thickness / 2.0
+    color_str = " ".join(str(component) for component in color)
+
+    return f"""
+    <model name="{name}">
+      <static>true</static>
+      <pose>{x} {y} 0 0 0 0</pose>
+      <link name="link">
+        <visual name="lake_visual">
+          <pose>0 0 {half_thickness} 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>{radius}</radius>
+              <length>{thickness}</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>{color_str}</ambient>
+            <diffuse>{color_str}</diffuse>
+            <specular>0.2 0.2 0.2 {color[3]}</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    """
+
+
 def create_landing_pad(name, x, y, size_x=10.0, size_y=10.0, height=0.1):
     half_height = height / 2.0
 
@@ -174,6 +202,7 @@ def main():
     objects_xml = "\n".join(
         [
             create_landing_pad("start_base", 0.0, 0.0),
+            create_lake_disc("lake", -200.0, 0.0, radius=50.0),
             create_circular_pool("pool_red", 25.0, 0.0, color=(1.0, 0.15, 0.15, 0.8)),
             create_circular_pool("pool_green", 50.0, 5.0, color=(0.15, 0.8, 0.2, 0.8)),
             create_circular_pool("pool_blue", 75.0, -2.0, color=(0.1, 0.3, 1.0, 0.8)),
