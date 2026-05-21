@@ -1,0 +1,12 @@
+{
+    "include": [
+        "last_mile_logistics_mission",
+        "launch",
+        "test"
+    ],
+    "extraPaths": [
+        "/opt/ros/jazzy/lib/python3.12/site-packages",
+        "../../install/last_mile_logistics_mission/lib/python3.12/site-packages",
+        "../../install/px4_msgs/lib/python3.12/site-packages"
+    ]
+}

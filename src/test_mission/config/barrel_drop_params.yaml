@@ -1,0 +1,29 @@
+pilot_node:
+  ros__parameters:
+    max_altitude_m: 4.0
+    max_speed_m_s: 1.8
+    transit_speed_m_s: 6.0
+    control_period_s: 0.03
+
+barrel_drop_mission:
+  ros__parameters:
+    takeoff_height_m: 2.5
+    cruise_height_m: 2.5
+    barrel_drop_height_m: 1.55
+    barrel_position_x_m: -30.0
+    barrel_position_y_m: 0.0
+    position_tolerance_m: 0.3
+    altitude_tolerance_m: 0.22
+    settle_time_s: 1.0
+    release_retry_period_s: 1.0
+    drop_offset_below_drone_m: 0.35
+    hidden_ball_base_x_m: 1000.0
+    hidden_ball_base_y_m: 1000.0
+    hidden_ball_z_m: -10.0
+    world_name: last_mile_logistics_randomized
+    drone_model_name: x500_depth_0
+    ball_model_names:
+      - ball_red
+      - ball_blue
+      - ball_yellow
+    preferred_ball_model_name: ball_blue

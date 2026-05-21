@@ -1,0 +1,47 @@
+# ==============================
+# ROS 2 / Colcon Build Files
+# ==============================
+# Never commit these! Colcon generates them specific to your computer.
+build/
+install/
+log/
+
+# ==============================
+# Python Artifacts
+# ==============================
+# Compiled python files and cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ==============================
+# Virtual Environments
+# ==============================
+# Ignore the ML environment we created, plus standard venv names
+ml_venv/
+venv/
+env/
+.env
+
+# ==============================
+# IDEs and Editors
+# ==============================
+# Settings specific to your code editor (VS Code, PyCharm, Vim)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==============================
+# OS Generated Files
+# ==============================
+# Mac and Windows hidden system files
+.DS_Store
+Thumbs.db
+
+# ==============================
+# ROS 2 specific (Optional but good)
+# ==============================
+# If you ever create standard ROS bags (recorded flight data), ignore them
+*.db3
