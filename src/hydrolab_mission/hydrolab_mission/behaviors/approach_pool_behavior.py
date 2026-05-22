@@ -55,15 +55,15 @@ class ApproachPool(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.RUNNING
 
         pitch_down_deg = -float(pitch_deg)
-        lock_persisting = (
-            str(self.node.blackboard.gimbal_status).upper() == 'STATUS_LOCKED'
+        target_detected = bool(
+            getattr(self.node.blackboard, 'target_detected', False)
         )
 
-        if pitch_down_deg >= 80.0 and lock_persisting:
+        if pitch_down_deg >= 80.0 and target_detected:
             if not self.completed:
                 self.node.get_logger().info(
                     f'Pool approach complete for {self.pool_color}: '
-                    f'gimbal pitch down {pitch_down_deg:.1f} deg and lock confirmed.'
+                    f'gimbal pitch down {pitch_down_deg:.1f} deg and target detection confirmed.'
                 )
                 self.completed = True
             return py_trees.common.Status.SUCCESS
@@ -71,7 +71,7 @@ class ApproachPool(py_trees.behaviour.Behaviour):
         self.node.get_logger().info(
             f'Raycasted pool approach active for {self.pool_color}: '
             f'gimbal pitch down {pitch_down_deg:.1f} deg '
-            f'(target >= 80.0), lock={lock_persisting}.',
+            f'(target >= 80.0), target_detected={target_detected}.',
             throttle_duration_sec=1.0,
         )
         return py_trees.common.Status.RUNNING

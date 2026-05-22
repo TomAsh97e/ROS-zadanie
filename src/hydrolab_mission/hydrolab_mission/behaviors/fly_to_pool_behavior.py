@@ -21,6 +21,7 @@ class FlyToPool(py_trees.behaviour.Behaviour):
         self.blackboard = py_trees.blackboard.Client(name=name)
         self.blackboard.register_key(key="home_position", access=py_trees.common.Access.READ)
         self.blackboard.register_key(key="gimbal_status", access=py_trees.common.Access.READ)
+        self.blackboard.register_key(key="target_detected", access=py_trees.common.Access.READ)
         self.target_world_z = None
         self.target_x = None
         self.target_y = None
@@ -49,14 +50,15 @@ class FlyToPool(py_trees.behaviour.Behaviour):
         self.node.send_gimbal_command("COMMAND_SEARCH")
 
     def update(self):
-        if self.blackboard.gimbal_status == "STATUS_LOCKED":
+        if bool(self.blackboard.target_detected):
             self.node.get_logger().info(
-                'Pool target spotted (gimbal lock). Handing off to raycasted approach...'
+                'Pool target spotted (recent visual detection). Handing off to raycasted approach...'
             )
             return py_trees.common.Status.SUCCESS
 
         self.node.get_logger().info(
-            f"Flying to pool waypoint; gimbal state is '{self.blackboard.gimbal_status}'...",
+            f"Flying to pool waypoint; target_detected={bool(self.blackboard.target_detected)}, "
+            f"gimbal state='{self.blackboard.gimbal_status}'...",
             throttle_duration_sec=2.0,
         )
         return py_trees.common.Status.RUNNING

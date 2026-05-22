@@ -79,6 +79,9 @@ mission_behavior_tree:
     approach_final_speed: 1.0
     approach_slowdown_raycast_distance_m: 15.0
     approach_final_speed_raycast_distance_m: 5.0
+    target_detected_timeout_s: 1.0
+    behavior_change_log_file: /home/mateusz/AbsoluteEdge/SImulation_Hydrolab/logs/behavior_changes.log
+    capture_photo_hover_altitude_m: 4.0
     descent_target_altitude_m: 3.0
 
 gimbal_controller:

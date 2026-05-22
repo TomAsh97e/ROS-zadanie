@@ -13,6 +13,7 @@ from px4_msgs.msg import (
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from std_msgs.msg import Bool
 from std_msgs.msg import Float32
 from std_msgs.msg import String
 
@@ -99,6 +100,11 @@ class PilotNode(Node):
         self.constraints_publisher = self.create_publisher(
             VehicleConstraints,
             '/fmu/in/vehicle_constraints',
+            10,
+        )
+        self.ready_publisher = self.create_publisher(
+            Bool,
+            '/pilot/ready',
             10,
         )
 
@@ -373,7 +379,8 @@ class PilotNode(Node):
 
         self.get_logger().info(
             f'Received new target: X={clamped_target[0]:.2f}, '
-            f'Y={clamped_target[1]:.2f}, Z={clamped_target[2]:.2f}'
+            f'Y={clamped_target[1]:.2f}, Z={clamped_target[2]:.2f}',
+            throttle_duration_sec=1.0,
         )
 
     def odometry_callback(self, msg):
@@ -414,6 +421,7 @@ class PilotNode(Node):
             self.update_position_setpoint()
 
         self.publish_setpoint()
+        self.publish_ready_state()
 
         if self.vehicle_connected:
             if self.heartbeat_counter == 10:
@@ -421,6 +429,13 @@ class PilotNode(Node):
                 self.arm_drone()
 
             self.heartbeat_counter += 1
+
+    def publish_ready_state(self):
+        msg = Bool()
+        # Require established telemetry and enough warmup setpoints sent before
+        # mission behaviors issue first takeoff command.
+        msg.data = bool(self.vehicle_connected and self.heartbeat_counter >= 10)
+        self.ready_publisher.publish(msg)
 
     def publish_control_mode(self):
         msg = OffboardControlMode()
