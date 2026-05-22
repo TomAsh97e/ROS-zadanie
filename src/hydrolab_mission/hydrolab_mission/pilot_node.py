@@ -23,6 +23,7 @@ class PilotNode(Node):
         self.declare_parameter('max_altitude_m', 3.0)
         self.declare_parameter('max_speed_m_s', 1.0)
         self.declare_parameter('hover_contract_topic', '/mission/hover_contract')
+        self.declare_parameter('approach_contract_topic', '/mission/approach_contract')
         self.declare_parameter('ibvs_velocity_topic', '/pilot/ibvs_velocity_cmd')
         self.declare_parameter('ibvs_cmd_timeout_s', 0.5)
         self.declare_parameter('ibvs_max_speed_m_s', 0.8)
@@ -37,6 +38,9 @@ class PilotNode(Node):
         )
         self.hover_contract_topic = str(
             self.get_parameter('hover_contract_topic').value
+        )
+        self.approach_contract_topic = str(
+            self.get_parameter('approach_contract_topic').value
         )
         self.ibvs_velocity_topic = str(
             self.get_parameter('ibvs_velocity_topic').value
@@ -118,6 +122,12 @@ class PilotNode(Node):
             self.hover_contract_callback,
             10,
         )
+        self.approach_contract_subscriber = self.create_subscription(
+            String,
+            self.approach_contract_topic,
+            self.approach_contract_callback,
+            10,
+        )
         self.ibvs_velocity_subscriber = self.create_subscription(
             Vector3,
             self.ibvs_velocity_topic,
@@ -136,6 +146,10 @@ class PilotNode(Node):
         self.last_hover_log_ns = 0
         self.hover_contract_active = False
         self.hover_tracking_mode = 'idle'
+        self.approach_contract_active = False
+        self.approach_tracking_mode = 'idle'
+        self.approach_speed_limit_m_s = None
+        self.approach_final_length_m = None
         self.ibvs_velocity_cmd = [0.0, 0.0, 0.0]
         self.last_ibvs_cmd_time_s = 0.0
 
@@ -218,6 +232,47 @@ class PilotNode(Node):
         self.hover_tracking_mode = str(
             payload.get('tracking_mode', 'idle')
         ).strip().lower()
+
+    def approach_contract_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            self.get_logger().warn(
+                'Received invalid approach contract JSON payload.',
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        if not isinstance(payload, dict):
+            self.get_logger().warn(
+                'Ignoring approach contract payload with non-object root.',
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        self.approach_contract_active = bool(payload.get('active', False))
+        self.approach_tracking_mode = str(
+            payload.get('tracking_mode', 'idle')
+        ).strip().lower()
+        constraints = payload.get('constraints', {})
+        if not isinstance(constraints, dict):
+            constraints = {}
+        speed_value = constraints.get('final_speed_m_s', None)
+        if speed_value is None:
+            self.approach_speed_limit_m_s = None
+        else:
+            try:
+                self.approach_speed_limit_m_s = max(0.05, float(speed_value))
+            except (TypeError, ValueError):
+                self.approach_speed_limit_m_s = None
+        final_length_value = constraints.get('final_length_m', None)
+        if final_length_value is None:
+            self.approach_final_length_m = None
+        else:
+            try:
+                self.approach_final_length_m = max(0.1, float(final_length_value))
+            except (TypeError, ValueError):
+                self.approach_final_length_m = None
 
     def ibvs_velocity_callback(self, msg):
         self.ibvs_velocity_cmd = [
@@ -362,7 +417,7 @@ class PilotNode(Node):
 
         delta = [sanitized_target[i] - self.current_target[i] for i in range(3)]
         distance = math.sqrt(sum(component * component for component in delta))
-        max_step = self.max_speed_m_s * self.control_period_s
+        max_step = self.get_position_speed_limit_m_s(distance) * self.control_period_s
 
         if distance <= max_step or distance == 0.0:
             self.current_target = sanitized_target.copy()
@@ -383,7 +438,7 @@ class PilotNode(Node):
             + (horizontal_delta_y * horizontal_delta_y)
         )
 
-        max_horizontal_step = self.max_speed_m_s * self.control_period_s
+        max_horizontal_step = self.get_position_speed_limit_m_s(horizontal_distance) * self.control_period_s
         if horizontal_distance <= max_horizontal_step or horizontal_distance == 0.0:
             next_target[0] = requested_target[0]
             next_target[1] = requested_target[1]
@@ -464,6 +519,18 @@ class PilotNode(Node):
 
     def is_hover_velocity_mode_active(self):
         return self.hover_contract_active and self.hover_tracking_mode == 'hover'
+
+    def get_position_speed_limit_m_s(self, distance_to_target_m):
+        if (
+            self.approach_contract_active
+            and self.approach_tracking_mode == 'initial_approach'
+            and self.approach_speed_limit_m_s is not None
+        ):
+            if self.approach_final_length_m is None:
+                return min(self.max_speed_m_s, self.approach_speed_limit_m_s)
+            if distance_to_target_m <= self.approach_final_length_m:
+                return min(self.max_speed_m_s, self.approach_speed_limit_m_s)
+        return self.max_speed_m_s
 
     def get_active_ibvs_velocity(self):
         now_s = self.get_clock().now().nanoseconds / 1e9

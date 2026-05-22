@@ -66,7 +66,7 @@ if [ -f ~/QGroundControl.AppImage ]; then
 else
     echo "WARNING: QGroundControl not found at ~/QGroundControl.AppImage"
 fi
-sleep 5
+sleep 20
 
 
 echo ""
@@ -74,6 +74,8 @@ echo "========================================"
 echo "7. Launching OpenCV Camera Viewer"
 echo "========================================"
 cd "$SOFTWARE_ROOT"
+export HYDROLAB_CONFIG_DIR=/home/mateusz/AbsoluteEdge/SImulation_Hydrolab/runtime_config/hydrolab_mission
+
 # 2. FIXED PYTHON EXECUTION
 # Directly targeting the python engine inside the venv avoids all activation bugs!
 source /opt/ros/jazzy/setup.bash  # Change 'humble' if you use a different ROS 2 version

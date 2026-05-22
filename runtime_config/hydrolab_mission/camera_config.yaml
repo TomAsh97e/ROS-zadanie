@@ -1,43 +1,28 @@
-/gimbal_controller:
+gimbal_controller:
   ros__parameters:
     search_waypoints: [
       -35.0, 0.0,
       -90.0, 0.0,
       -35.0, 0.0,
-      -35.0, -60.0,
       -35.0, -120.0,
-      -90.0, -120.0,
-      -35.0, -120.0,
-      -35.0, -60.0, 
-      -35.0, 0.0, 
+      -35.0, 0.0,
       -90.0, 0.0,
       -35.0, 0.0,
-      -35.0, 60.0, 
       -35.0, 120.0,
-      -90.0, 120.0,
-      -35.0, 120.0,
-      -35.0, 60.0
+
     ]
 
-/gimbal_tracker:
+gimbal_tracker:
   ros__parameters:
     camera_hfov_deg: 114.6
     camera_vfov_deg: 71.6
-    
-    # 1. Slightly reduced P-gain for less aggressive initial movement
-    tracking_p_gain: 0.35 
-    
+    tracking_p_gain: 0.35
     tracking_i_gain_pitch: 0.0
     tracking_i_gain_yaw: 0.0
-    
-    # 2. Introduced D-gain to act as a damper and prevent overshoot
     tracking_d_gain_pitch: 0.05
     tracking_d_gain_yaw: 0.05
-    
-    # 3. Enabled filtering to handle ML bounding box jitter
     derivative_lpf_alpha: 0.2
     measurement_lpf_alpha: 0.6
-    
     control_interval_s: 0.1
     detection_timeout_s: 0.6
     enabled_at_start: true
