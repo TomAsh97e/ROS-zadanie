@@ -1,10 +1,11 @@
 pilot_node:
   ros__parameters:
     max_altitude_m: 5.0
-    max_speed_m_s: 10.0
+    max_speed_m_s: 3.0
     hover_contract_topic: /mission/hover_contract
     ibvs_velocity_topic: /pilot/ibvs_velocity_cmd
     ibvs_cmd_timeout_s: 0.5
+    raycast_distance_timeout_s: 1.0
     ibvs_max_speed_m_s: 0.8
     ball_hover_error_gain: 0.18
     ball_hover_deadband: 0.05
@@ -58,13 +59,13 @@ mission_behavior_tree:
     final_pool_color: yellow
     # Pool centers in Gazebo world frame (m); match SimWorld_hydrolab/build_world.py
     pool_red_x_m: 4.0
-    pool_red_y_m: 25.0
+    pool_red_y_m: 20.0
     pool_green_x_m: 5.0
-    pool_green_y_m: 50.0
+    pool_green_y_m: 45.0
     pool_blue_x_m: -2.0
-    pool_blue_y_m: 75.0
+    pool_blue_y_m: 70.0
     pool_yellow_x_m: 6.0
-    pool_yellow_y_m: 100.0
+    pool_yellow_y_m: 95.0
     takeoff_height_m: 5.0
     forward_distance_m: 4.0
     position_tolerance_m: 0.35
@@ -75,8 +76,9 @@ mission_behavior_tree:
     approach_center_tolerance_v: 0.07
     approach_lost_timeout_s: 2.0
     approach_center_hold_s: 1.0
-    approach_final_speed: 2.0
-    approach_final_length: 10.0
+    approach_final_speed: 1.0
+    approach_slowdown_raycast_distance_m: 15.0
+    approach_final_speed_raycast_distance_m: 5.0
     descent_target_altitude_m: 3.0
 
 gimbal_controller:

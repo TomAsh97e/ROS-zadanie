@@ -6,6 +6,7 @@ from px4_msgs.msg import DistanceSensor, VehicleOdometry
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from std_msgs.msg import Float32
 from std_msgs.msg import String
 
 
@@ -16,6 +17,7 @@ class RaycastedApproachCoordinatorNode(Node):
         self.declare_parameter('control_interval_s', 0.1)
         self.declare_parameter('target_topic', '/pilot/target_position')
         self.declare_parameter('approach_contract_topic', '/mission/approach_contract')
+        self.declare_parameter('raycast_distance_topic', '/pilot/raycast_distance_m')
         self.declare_parameter('gimbal_status_topic', '/gimbal/status')
         self.declare_parameter('gimbal_orientation_topic', '/gimbal/current_orientation_deg')
         self.declare_parameter('odom_topic', '/fmu/out/vehicle_odometry')
@@ -76,6 +78,9 @@ class RaycastedApproachCoordinatorNode(Node):
         approach_contract_topic = str(
             self.get_parameter('approach_contract_topic').value
         )
+        raycast_distance_topic = str(
+            self.get_parameter('raycast_distance_topic').value
+        )
         gimbal_status_topic = str(self.get_parameter('gimbal_status_topic').value)
         gimbal_orientation_topic = str(self.get_parameter('gimbal_orientation_topic').value)
         odom_topic = str(self.get_parameter('odom_topic').value)
@@ -83,6 +88,11 @@ class RaycastedApproachCoordinatorNode(Node):
         detection_topic = str(self.get_parameter('detection_topic').value)
 
         self.target_publisher = self.create_publisher(Point, target_topic, 10)
+        self.raycast_distance_publisher = self.create_publisher(
+            Float32,
+            raycast_distance_topic,
+            10,
+        )
         self.create_subscription(
             VehicleOdometry,
             odom_topic,
@@ -310,6 +320,9 @@ class RaycastedApproachCoordinatorNode(Node):
             return
 
         t = min(t, self.max_raycast_distance_m)
+        distance_msg = Float32()
+        distance_msg.data = float(t)
+        self.raycast_distance_publisher.publish(distance_msg)
         target_x = camera_origin_world[0] + (t * ray_world[0])
         target_y = camera_origin_world[1] + (t * ray_world[1])
         target_z = self.current_position[2]

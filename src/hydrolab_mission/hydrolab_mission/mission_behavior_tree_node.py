@@ -45,7 +45,8 @@ class MissionBehaviorTree(Node):
         self.declare_parameter('approach_lost_timeout_s', 2.0)
         self.declare_parameter('approach_center_hold_s', 1.0)
         self.declare_parameter('approach_final_speed', 0.6)
-        self.declare_parameter('approach_final_length', 3.0)
+        self.declare_parameter('approach_slowdown_raycast_distance_m', 0.0)
+        self.declare_parameter('approach_final_speed_raycast_distance_m', 0.0)
         self.declare_parameter('initial_approach_center_tolerance_u', 0.16)
         self.declare_parameter('initial_approach_center_tolerance_v', 0.16)
         self.declare_parameter('initial_approach_center_hold_s', 0.8)
@@ -86,9 +87,13 @@ class MissionBehaviorTree(Node):
             float(self.get_parameter('approach_final_speed').value),
             0.05,
         )
-        self.approach_final_length = max(
-            float(self.get_parameter('approach_final_length').value),
-            0.1,
+        self.approach_slowdown_raycast_distance_m = max(
+            float(self.get_parameter('approach_slowdown_raycast_distance_m').value),
+            0.0,
+        )
+        self.approach_final_speed_raycast_distance_m = max(
+            float(self.get_parameter('approach_final_speed_raycast_distance_m').value),
+            0.0,
         )
         self.initial_approach_center_tolerance_u = float(
             self.get_parameter('initial_approach_center_tolerance_u').value
@@ -267,7 +272,8 @@ class MissionBehaviorTree(Node):
                 node=self,
                 pool_color=color,
                 final_speed_m_s=self.approach_final_speed,
-                final_length_m=self.approach_final_length,
+                slowdown_raycast_distance_m=self.approach_slowdown_raycast_distance_m,
+                final_speed_raycast_distance_m=self.approach_final_speed_raycast_distance_m,
             )
             descend_over_pool = DescendOverPool(
                 name=f"Descend Over {display_color} Pool",

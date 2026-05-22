@@ -2,12 +2,27 @@ import py_trees
 
 
 class ApproachPool(py_trees.behaviour.Behaviour):
-    def __init__(self, name, node, pool_color, final_speed_m_s, final_length_m):
+    def __init__(
+        self,
+        name,
+        node,
+        pool_color,
+        final_speed_m_s,
+        slowdown_raycast_distance_m,
+        final_speed_raycast_distance_m,
+    ):
         super().__init__(name)
         self.node = node
         self.pool_color = pool_color.lower()
         self.final_speed_m_s = float(final_speed_m_s)
-        self.final_length_m = float(final_length_m)
+        self.slowdown_raycast_distance_m = max(
+            0.0,
+            float(slowdown_raycast_distance_m),
+        )
+        self.final_speed_raycast_distance_m = max(
+            0.0,
+            float(final_speed_raycast_distance_m),
+        )
         self.completed = False
 
     def initialise(self):
@@ -29,7 +44,8 @@ class ApproachPool(py_trees.behaviour.Behaviour):
             'constraints': {
                 'require_lock': True,
                 'final_speed_m_s': self.final_speed_m_s,
-                'final_length_m': self.final_length_m,
+                'slowdown_raycast_distance_m': self.slowdown_raycast_distance_m,
+                'final_speed_raycast_distance_m': self.final_speed_raycast_distance_m,
             },
         })
 

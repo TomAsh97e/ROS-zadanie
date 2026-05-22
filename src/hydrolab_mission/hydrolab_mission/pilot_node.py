@@ -13,6 +13,7 @@ from px4_msgs.msg import (
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from std_msgs.msg import Float32
 from std_msgs.msg import String
 
 
@@ -24,12 +25,14 @@ class PilotNode(Node):
         self.declare_parameter('max_speed_m_s', 1.0)
         self.declare_parameter('hover_contract_topic', '/mission/hover_contract')
         self.declare_parameter('approach_contract_topic', '/mission/approach_contract')
+        self.declare_parameter('raycast_distance_topic', '/pilot/raycast_distance_m')
         self.declare_parameter('ibvs_velocity_topic', '/pilot/ibvs_velocity_cmd')
         self.declare_parameter('ibvs_cmd_timeout_s', 0.5)
         self.declare_parameter('ibvs_max_speed_m_s', 0.8)
         self.declare_parameter('ball_hover_error_gain', 0.18)
         self.declare_parameter('ball_hover_deadband', 0.05)
         self.declare_parameter('descent_min_speed_m_s', 0.2)
+        self.declare_parameter('raycast_distance_timeout_s', 0.5)
 
         self.max_altitude_m = float(self.get_parameter('max_altitude_m').value)
         self.max_speed_m_s = max(
@@ -41,6 +44,9 @@ class PilotNode(Node):
         )
         self.approach_contract_topic = str(
             self.get_parameter('approach_contract_topic').value
+        )
+        self.raycast_distance_topic = str(
+            self.get_parameter('raycast_distance_topic').value
         )
         self.ibvs_velocity_topic = str(
             self.get_parameter('ibvs_velocity_topic').value
@@ -68,6 +74,10 @@ class PilotNode(Node):
         self.descent_min_speed_m_s = min(
             self.descent_min_speed_m_s,
             self.max_speed_m_s,
+        )
+        self.raycast_distance_timeout_s = max(
+            float(self.get_parameter('raycast_distance_timeout_s').value),
+            0.05,
         )
         self.control_period_s = 0.1
 
@@ -128,6 +138,12 @@ class PilotNode(Node):
             self.approach_contract_callback,
             10,
         )
+        self.raycast_distance_subscriber = self.create_subscription(
+            Float32,
+            self.raycast_distance_topic,
+            self.raycast_distance_callback,
+            10,
+        )
         self.ibvs_velocity_subscriber = self.create_subscription(
             Vector3,
             self.ibvs_velocity_topic,
@@ -149,7 +165,11 @@ class PilotNode(Node):
         self.approach_contract_active = False
         self.approach_tracking_mode = 'idle'
         self.approach_speed_limit_m_s = None
-        self.approach_final_length_m = None
+        self.approach_slowdown_raycast_distance_m = None
+        self.approach_final_speed_raycast_distance_m = None
+        self.last_valid_approach_speed_limit_m_s = None
+        self.latest_raycast_distance_m = None
+        self.last_raycast_distance_time_s = 0.0
         self.ibvs_velocity_cmd = [0.0, 0.0, 0.0]
         self.last_ibvs_cmd_time_s = 0.0
 
@@ -254,6 +274,8 @@ class PilotNode(Node):
         self.approach_tracking_mode = str(
             payload.get('tracking_mode', 'idle')
         ).strip().lower()
+        if not self.approach_contract_active:
+            self.last_valid_approach_speed_limit_m_s = None
         constraints = payload.get('constraints', {})
         if not isinstance(constraints, dict):
             constraints = {}
@@ -265,14 +287,35 @@ class PilotNode(Node):
                 self.approach_speed_limit_m_s = max(0.05, float(speed_value))
             except (TypeError, ValueError):
                 self.approach_speed_limit_m_s = None
-        final_length_value = constraints.get('final_length_m', None)
-        if final_length_value is None:
-            self.approach_final_length_m = None
+        slowdown_distance_value = constraints.get('slowdown_raycast_distance_m', None)
+        if slowdown_distance_value is None:
+            self.approach_slowdown_raycast_distance_m = None
         else:
             try:
-                self.approach_final_length_m = max(0.1, float(final_length_value))
+                self.approach_slowdown_raycast_distance_m = max(
+                    0.0,
+                    float(slowdown_distance_value),
+                )
             except (TypeError, ValueError):
-                self.approach_final_length_m = None
+                self.approach_slowdown_raycast_distance_m = None
+        final_speed_distance_value = constraints.get('final_speed_raycast_distance_m', None)
+        if final_speed_distance_value is None:
+            self.approach_final_speed_raycast_distance_m = None
+        else:
+            try:
+                self.approach_final_speed_raycast_distance_m = max(
+                    0.0,
+                    float(final_speed_distance_value),
+                )
+            except (TypeError, ValueError):
+                self.approach_final_speed_raycast_distance_m = None
+
+    def raycast_distance_callback(self, msg):
+        distance_m = float(msg.data)
+        if not math.isfinite(distance_m) or distance_m < 0.0:
+            return
+        self.latest_raycast_distance_m = distance_m
+        self.last_raycast_distance_time_s = self.get_clock().now().nanoseconds / 1e9
 
     def ibvs_velocity_callback(self, msg):
         self.ibvs_velocity_cmd = [
@@ -470,9 +513,20 @@ class PilotNode(Node):
             velocity_cmd = self.get_active_ibvs_velocity()
             msg.position = [math.nan, math.nan, math.nan]
             msg.velocity = velocity_cmd
+            self.get_logger().info(
+                'Publishing velocity setpoint (hover mode): '
+                f'vx={velocity_cmd[0]:.2f}, vy={velocity_cmd[1]:.2f}, vz={velocity_cmd[2]:.2f}',
+                throttle_duration_sec=1.0,
+            )
         else:
             msg.position = self.current_target
             msg.velocity = [math.nan, math.nan, math.nan]
+            self.get_logger().info(
+                'Publishing position setpoint (velocity omitted in position mode): '
+                f'x={self.current_target[0]:.2f}, y={self.current_target[1]:.2f}, '
+                f'z={self.current_target[2]:.2f}',
+                throttle_duration_sec=1.0,
+            )
         msg.acceleration = [math.nan, math.nan, math.nan]
         msg.jerk = [math.nan, math.nan, math.nan]
         msg.yaw = self.current_yaw
@@ -521,16 +575,93 @@ class PilotNode(Node):
         return self.hover_contract_active and self.hover_tracking_mode == 'hover'
 
     def get_position_speed_limit_m_s(self, distance_to_target_m):
+        speed_limits = []
+        debug_reason = 'max_speed_default'
         if (
             self.approach_contract_active
             and self.approach_tracking_mode == 'initial_approach'
             and self.approach_speed_limit_m_s is not None
         ):
-            if self.approach_final_length_m is None:
-                return min(self.max_speed_m_s, self.approach_speed_limit_m_s)
-            if distance_to_target_m <= self.approach_final_length_m:
-                return min(self.max_speed_m_s, self.approach_speed_limit_m_s)
-        return self.max_speed_m_s
+            now_s = self.get_clock().now().nanoseconds / 1e9
+            has_recent_raycast_distance = (
+                self.latest_raycast_distance_m is not None
+                and self.last_raycast_distance_time_s > 0.0
+                and (now_s - self.last_raycast_distance_time_s) <= self.raycast_distance_timeout_s
+            )
+            if not has_recent_raycast_distance:
+                fallback_limit_m_s = self.last_valid_approach_speed_limit_m_s
+                if fallback_limit_m_s is None:
+                    fallback_limit_m_s = self.approach_speed_limit_m_s
+                if fallback_limit_m_s is not None:
+                    speed_limits.append(fallback_limit_m_s)
+                    debug_reason = 'raycast_stale_fallback_speed'
+                else:
+                    debug_reason = 'raycast_stale_or_missing'
+            if (
+                has_recent_raycast_distance
+                and self.approach_slowdown_raycast_distance_m is not None
+                and self.approach_slowdown_raycast_distance_m > 1e-6
+                and self.latest_raycast_distance_m <= self.approach_slowdown_raycast_distance_m
+            ):
+                final_speed_distance_m = self.approach_final_speed_raycast_distance_m
+                if final_speed_distance_m is None:
+                    final_speed_distance_m = 0.0
+                final_speed_distance_m = min(
+                    final_speed_distance_m,
+                    self.approach_slowdown_raycast_distance_m,
+                )
+                if self.latest_raycast_distance_m <= final_speed_distance_m:
+                    adaptive_limit_m_s = self.approach_speed_limit_m_s
+                    debug_reason = 'inside_final_speed_zone'
+                elif (
+                    self.approach_slowdown_raycast_distance_m
+                    - final_speed_distance_m
+                    <= 1e-6
+                ):
+                    adaptive_limit_m_s = self.approach_speed_limit_m_s
+                    debug_reason = 'degenerate_slowdown_window'
+                else:
+                    slowdown_ratio = self.clamp(
+                        (
+                            self.latest_raycast_distance_m - final_speed_distance_m
+                        )
+                        / (
+                            self.approach_slowdown_raycast_distance_m
+                            - final_speed_distance_m
+                        ),
+                        0.0,
+                        1.0,
+                    )
+                    adaptive_limit_m_s = self.approach_speed_limit_m_s + (
+                        (self.max_speed_m_s - self.approach_speed_limit_m_s)
+                        * slowdown_ratio
+                    )
+                    debug_reason = 'interpolated_slowdown_zone'
+                speed_limits.append(adaptive_limit_m_s)
+                self.last_valid_approach_speed_limit_m_s = adaptive_limit_m_s
+            elif has_recent_raycast_distance:
+                debug_reason = 'outside_slowdown_zone'
+
+        speed_limit_m_s = self.max_speed_m_s
+        if speed_limits:
+            speed_limit_m_s = min(self.max_speed_m_s, min(speed_limits))
+
+        if self.approach_contract_active and self.approach_tracking_mode == 'initial_approach':
+            raycast_text = (
+                f'{self.latest_raycast_distance_m:.2f}'
+                if self.latest_raycast_distance_m is not None
+                else 'n/a'
+            )
+            self.get_logger().info(
+                'Approach speed limiter: '
+                f'reason={debug_reason}, '
+                f'raycast_distance_m={raycast_text}, '
+                f'speed_limit_m_s={speed_limit_m_s:.2f}, '
+                f'requested_delta_distance_m={distance_to_target_m:.2f}',
+                throttle_duration_sec=1.0,
+            )
+
+        return speed_limit_m_s
 
     def get_active_ibvs_velocity(self):
         now_s = self.get_clock().now().nanoseconds / 1e9

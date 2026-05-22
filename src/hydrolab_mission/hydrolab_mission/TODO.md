@@ -17,9 +17,16 @@ check if the lidar was added correctly, if yes - add it to the readme and repo
 
 incorporate lidar into the program by writing another node that will do this calculations and also use this tf2 library or sth t ohandle transofrmations.
 
-consult if i should continue with the balls or switch to hydrolab
+finish the behavior tree for the hydrolab, including the water suction sequence, the return seqence etc
 
-do the whole basic hydrolab mission. 
+add a communnication node to send the mission parameters and other required stuff
+
+add a gimbal stabilization while the drone tilts 
+
+finish the slow down mechanism, very important to utilize plenty of the drone speed to reach the target
+
+
+
 
 ## Build & launch
 
