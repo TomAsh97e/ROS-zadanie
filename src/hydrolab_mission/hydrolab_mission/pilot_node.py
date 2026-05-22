@@ -144,6 +144,12 @@ class PilotNode(Node):
             self.approach_contract_callback,
             10,
         )
+        self.landing_active_subscriber = self.create_subscription(
+            Bool,
+            '/mission/landing_active',
+            self.landing_active_callback,
+            10,
+        )
         self.raycast_distance_subscriber = self.create_subscription(
             Float32,
             self.raycast_distance_topic,
@@ -178,6 +184,7 @@ class PilotNode(Node):
         self.last_raycast_distance_time_s = 0.0
         self.ibvs_velocity_cmd = [0.0, 0.0, 0.0]
         self.last_ibvs_cmd_time_s = 0.0
+        self.landing_active = False
 
         self.timer = self.create_timer(
             self.control_period_s,
@@ -331,6 +338,12 @@ class PilotNode(Node):
         ]
         self.last_ibvs_cmd_time_s = self.get_clock().now().nanoseconds / 1e9
 
+    def landing_active_callback(self, msg):
+        new_state = bool(msg.data)
+        if new_state != self.landing_active:
+            self.get_logger().info(f'Landing active set to {new_state}.')
+        self.landing_active = new_state
+
     def request_hover_over_ball(self, detection, color_name):
         if self.home_position is None:
             return
@@ -414,6 +427,10 @@ class PilotNode(Node):
         )
 
     def timer_callback(self):
+        if self.landing_active:
+            self.publish_ready_state()
+            return
+
         self.publish_control_mode()
         self.publish_vehicle_constraints()
 

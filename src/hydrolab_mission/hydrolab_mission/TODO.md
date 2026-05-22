@@ -18,7 +18,8 @@ check if the lidar was added correctly, if yes - add it to the readme and repo
 incorporate lidar into the program by writing another node that will do this calculations and also use this tf2 library or sth t ohandle transofrmations.
 
 finish the behavior tree for the hydrolab, including the water suction sequence, the return seqence etc - return sequence,
-suction behaviors, search behavior, photo taking behavior
+suction behaviors, search behavior, photo taking behavior.
+make sure only the last part of the tree is executed when 
 
 add a communnication node to send the mission parameters and other required stuff
 
@@ -28,8 +29,9 @@ finish the slow down mechanism, very important to utilize plenty of the drone sp
 
 add a communication node that has to start the whole mission and also trigger returntl
 
+try running the thing with the model for true baseny
 
-
+make the lauch quick and explsosive
 
 
 ## Build & launch

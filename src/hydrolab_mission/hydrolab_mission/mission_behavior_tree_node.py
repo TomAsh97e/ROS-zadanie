@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 import rclpy
@@ -6,7 +7,12 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from geometry_msgs.msg import Point, Vector3
 from std_msgs.msg import Bool, String
-from px4_msgs.msg import VehicleOdometry
+from px4_msgs.msg import (
+    VehicleCommand,
+    VehicleLandDetected,
+    VehicleOdometry,
+    VehicleStatus,
+)
 import py_trees
 
 
@@ -17,7 +23,6 @@ from hydrolab_mission.behaviors.fly_to_pool_behavior import FlyToPool
 
 from hydrolab_mission.behaviors.check_time_limit_behavior import CheckTimeLimit
 from hydrolab_mission.behaviors.return_to_launch_behavior import ReturnToLaunch
-from hydrolab_mission.behaviors.has_water_sample_behavior import HasWaterSample
 from hydrolab_mission.behaviors.approach_pool_behavior import ApproachPool
 from hydrolab_mission.behaviors.capture_photo_at_stable_hover_behavior import (
     CapturePhotoAtStableHover,
@@ -26,6 +31,10 @@ from hydrolab_mission.behaviors.descend_over_pool_behavior import DescendOverPoo
 from hydrolab_mission.behaviors.collect_water_sample_behavior import CollectWaterSample
 from hydrolab_mission.behaviors.verify_sample_collected_behavior import VerifySampleCollected
 from hydrolab_mission.behaviors.return_to_base_behavior import ReturnToBase
+from hydrolab_mission.behaviors.drop_water_behavior import DropWater
+from hydrolab_mission.behaviors.land_behavior import Land
+from hydrolab_mission.behaviors.disarm_behavior import Disarm
+from hydrolab_mission.behaviors.post_mission_idle_behavior import PostMissionIdle
 from hydrolab_mission.behaviors.toggle_pool_detection_decorator import TogglePoolDetection
 from hydrolab_mission.behaviors.start_search_path_behavior import StartSearchPath
 from hydrolab_mission.behaviors.is_target_locked_behavior import IsTargetLocked
@@ -66,6 +75,10 @@ class MissionBehaviorTree(Node):
         self.declare_parameter('descent_command_period_s', 0.4)
         self.declare_parameter('capture_photo_hover_altitude_m', 4.0)
         self.declare_parameter('descent_target_altitude_m', 0.0)
+        self.declare_parameter('base_x_m', 0.0)
+        self.declare_parameter('base_y_m', 0.0)
+        self.declare_parameter('base_hover_altitude_m', 3.0)
+        self.declare_parameter('launch_hover_altitude_m', 3.0)
         self.declare_parameter('target_detected_timeout_s', 1.0)
         self.declare_parameter(
             'behavior_change_log_file',
@@ -150,6 +163,16 @@ class MissionBehaviorTree(Node):
         self.descent_target_altitude_m = float(
             self.get_parameter('descent_target_altitude_m').value
         )
+        self.base_x_m = float(self.get_parameter('base_x_m').value)
+        self.base_y_m = float(self.get_parameter('base_y_m').value)
+        self.base_hover_altitude_m = max(
+            float(self.get_parameter('base_hover_altitude_m').value),
+            0.5,
+        )
+        self.launch_hover_altitude_m = max(
+            float(self.get_parameter('launch_hover_altitude_m').value),
+            0.5,
+        )
         self.target_detected_timeout_s = max(
             float(self.get_parameter('target_detected_timeout_s').value),
             0.1,
@@ -168,8 +191,18 @@ class MissionBehaviorTree(Node):
         self.pool_locations = self._load_pool_locations()
 
         self.target_publisher = self.create_publisher(Point, '/pilot/target_position', 10)
+        self.command_publisher = self.create_publisher(
+            VehicleCommand,
+            '/fmu/in/vehicle_command',
+            10,
+        )
         self.ball_detection_request_pub = self.create_publisher(String, '/vision/ball_detection/request', 10)
         self.ball_mode_pub = self.create_publisher(String, '/pilot/ball_mode', 10)
+        self.landing_active_pub = self.create_publisher(
+            Bool,
+            '/mission/landing_active',
+            10,
+        )
         self.approach_contract_pub = self.create_publisher(
             String,
             '/mission/approach_contract',
@@ -207,12 +240,30 @@ class MissionBehaviorTree(Node):
             self.pilot_ready_callback,
             10,
         )
+        self.land_detected_sub = self.create_subscription(
+            VehicleLandDetected,
+            '/fmu/out/vehicle_land_detected',
+            self.land_detected_callback,
+            qos_profile_sensor_data,
+        )
+        self.vehicle_status_sub = self.create_subscription(
+            VehicleStatus,
+            '/fmu/out/vehicle_status',
+            self.vehicle_status_callback,
+            qos_profile_sensor_data,
+        )
 
         self.odom_subscriber = self.create_subscription(
             VehicleOdometry, 
             '/fmu/out/vehicle_odometry', 
             self.odometry_callback, 
             qos_profile_sensor_data
+        )
+        self.target_echo_subscriber = self.create_subscription(
+            Point,
+            '/pilot/target_position',
+            self.target_echo_callback,
+            10,
         )
 
         self.blackboard = py_trees.blackboard.Client(name="Master")
@@ -221,17 +272,24 @@ class MissionBehaviorTree(Node):
         self.blackboard.register_key(key="gimbal_status", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="pilot_ready", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="target_detected", access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="landed", access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="arming_state", access=py_trees.common.Access.WRITE)
         self.blackboard.home_position = None
         self.blackboard.current_position = None
         self.blackboard.gimbal_status = "STATUS_IDLE"
         self.blackboard.pilot_ready = False
         self.blackboard.target_detected = False
+        self.blackboard.landed = False
+        self.blackboard.arming_state = int(VehicleStatus.ARMING_STATE_DISARMED)
         self.current_gimbal_pitch_deg = None
         self.latest_ball_detection = {'active': False, 'detections': []}
         self.latest_ball_detection_ns = 0
+        self.latest_target_position = None
+        self.latest_target_position_ns = 0
         self.detection_target_color = None
         self.behavior_change_log_path = None
         self._behavior_status_snapshot = {}
+        self.publish_landing_active(False)
 
         self.root = self.create_behavior_tree()
         self.tree = py_trees.trees.BehaviourTree(self.root)
@@ -430,7 +488,12 @@ class MissionBehaviorTree(Node):
         check_time = CheckTimeLimit(name="Check Mission Time > 9.5m")
         # Invert the check_time so sequence continues ONLY if Time Limit check FAILS (i.e. > 9.5s)
         time_limit_exceeded = py_trees.decorators.Inverter(name="Is Time Exceeded?", child=check_time)
-        rtl = ReturnToLaunch(name="Return to Launch")
+        rtl = ReturnToLaunch(
+            name="Return to Launch",
+            node=self,
+            target_hover_altitude_m=self.launch_hover_altitude_m,
+            position_tolerance_m=self.position_tolerance_m,
+        )
         safety_sequence.add_children([time_limit_exceeded, rtl])
 
         # [->] Branch 2: Main Mission (Sequence)
@@ -465,25 +528,40 @@ class MissionBehaviorTree(Node):
             main_mission.add_child(self._make_normal_pool_task(color))
 
         final_display_color = final_pool_color.capitalize()
-        final_pool_logic = py_trees.composites.Selector(
-            name=f"{final_display_color} Final Pool Logic",
-            memory=False,
-        )
-        final_has_sample = HasWaterSample(
-            name=f"Has Water Sample ({final_display_color})?",
-            node=self,
-            pool_color=final_display_color,
-        )
-        final_pool_logic.add_children(
-            [
-                final_has_sample,
-                self._make_final_pool_task(final_pool_color),
-            ]
-        )
-        main_mission.add_child(final_pool_logic)
+        main_mission.add_child(self._make_final_pool_task(final_pool_color))
 
-        return_to_base = ReturnToBase(name="Return To Base")
+        return_to_base = ReturnToBase(
+            name="Return To Base",
+            node=self,
+            target_x_m=self.base_x_m,
+            target_y_m=self.base_y_m,
+            target_hover_altitude_m=self.base_hover_altitude_m,
+            position_tolerance_m=self.position_tolerance_m,
+        )
         main_mission.add_child(return_to_base)
+
+        drop_water = DropWater(name="Drop Water At Base")
+        main_mission.add_child(drop_water)
+
+        land = Land(
+            name="Land At Launch",
+            node=self,
+            approach_hover_altitude_m=self.launch_hover_altitude_m,
+            position_tolerance_m=self.position_tolerance_m,
+        )
+        main_mission.add_child(land)
+
+        disarm = Disarm(
+            name="Disarm Motors",
+            node=self,
+        )
+        main_mission.add_child(disarm)
+
+        post_mission_idle = PostMissionIdle(
+            name="Post Mission Idle",
+            node=self,
+        )
+        main_mission.add_child(post_mission_idle)
         
         root.add_children([safety_sequence, main_mission])
         return root
@@ -526,12 +604,39 @@ class MissionBehaviorTree(Node):
     def pilot_ready_callback(self, msg):
         self.blackboard.pilot_ready = bool(msg.data)
 
+    def target_echo_callback(self, msg):
+        self.latest_target_position = [
+            float(msg.x),
+            float(msg.y),
+            float(msg.z),
+        ]
+        self.latest_target_position_ns = self.get_clock().now().nanoseconds
+
+    def land_detected_callback(self, msg):
+        self.blackboard.landed = bool(msg.landed)
+
+    def vehicle_status_callback(self, msg):
+        self.blackboard.arming_state = int(msg.arming_state)
+
     def publish_target(self, x, y, z):
         msg = Point()
         msg.x = float(x)
         msg.y = float(y)
         msg.z = float(z)
         self.target_publisher.publish(msg)
+
+    def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
+        msg = VehicleCommand()
+        msg.command = int(command)
+        msg.param1 = float(param1)
+        msg.param2 = float(param2)
+        msg.target_system = 1
+        msg.target_component = 1
+        msg.source_system = 1
+        msg.source_component = 1
+        msg.from_external = True
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.command_publisher.publish(msg)
 
     def send_gimbal_command(self, cmd_str):
         msg = String()
@@ -558,6 +663,11 @@ class MissionBehaviorTree(Node):
         msg = String()
         msg.data = mode_str.lower()
         self.ball_mode_pub.publish(msg)
+
+    def publish_landing_active(self, active):
+        msg = Bool()
+        msg.data = bool(active)
+        self.landing_active_pub.publish(msg)
 
     def publish_approach_contract(self, contract):
         if not isinstance(contract, dict):
@@ -642,8 +752,12 @@ class MissionBehaviorTree(Node):
             return
 
         try:
-            log_path = Path(self.behavior_change_log_file).expanduser()
-            log_path.parent.mkdir(parents=True, exist_ok=True)
+            configured_path = Path(self.behavior_change_log_file).expanduser()
+            configured_path.parent.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            log_path = configured_path.with_name(
+                f'{configured_path.stem}_{timestamp}{configured_path.suffix}'
+            )
             with log_path.open('a', encoding='utf-8') as log_file:
                 log_file.write('\n=== mission_behavior_tree session started ===\n')
             self.behavior_change_log_path = log_path

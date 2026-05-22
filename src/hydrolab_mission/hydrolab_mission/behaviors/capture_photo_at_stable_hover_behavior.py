@@ -45,18 +45,50 @@ class CapturePhotoAtStableHover(py_trees.behaviour.Behaviour):
 
         current_altitude_m = float(home_position[2] - current_position[2])
         target_altitude_m = float(self.node.capture_photo_hover_altitude_m)
-        if current_altitude_m <= target_altitude_m:
+        target_position = self.node.latest_target_position
+        target_position_ns = int(getattr(self.node, 'latest_target_position_ns', 0))
+        if target_position is None or target_position_ns <= 0:
+            self.node.get_logger().warn(
+                f'No active target setpoint available for {self.pool_color}; '
+                'cannot validate stable hover XY position yet.',
+                throttle_duration_sec=1.0,
+            )
+            return py_trees.common.Status.RUNNING
+
+        now_ns = self.node.get_clock().now().nanoseconds
+        if now_ns - target_position_ns > int(self.node.approach_lost_timeout_s * 1e9):
+            self.node.get_logger().warn(
+                f'Stable hover target setpoint is stale for {self.pool_color}; waiting for fresh raycast target.',
+                throttle_duration_sec=1.0,
+            )
+            return py_trees.common.Status.RUNNING
+
+        target_x_m = float(target_position[0])
+        target_y_m = float(target_position[1])
+        current_x_m = float(current_position[0])
+        current_y_m = float(current_position[1])
+        tolerance_m = float(self.node.position_tolerance_m)
+
+        x_within_tolerance = abs(current_x_m - target_x_m) <= tolerance_m
+        y_within_tolerance = abs(current_y_m - target_y_m) <= tolerance_m
+        altitude_within_limit = current_altitude_m <= target_altitude_m
+
+        if altitude_within_limit and x_within_tolerance and y_within_tolerance:
             self.node.get_logger().info(
                 f'Stable hover reached for {self.pool_color}: '
                 f'altitude={current_altitude_m:.2f} m '
-                f'(target <= {target_altitude_m:.2f} m).'
+                f'(target <= {target_altitude_m:.2f} m), '
+                f'x={current_x_m:.2f} m (target {target_x_m:.2f} +/- {tolerance_m:.2f}), '
+                f'y={current_y_m:.2f} m (target {target_y_m:.2f} +/- {tolerance_m:.2f}).'
             )
             return py_trees.common.Status.SUCCESS
 
         self.node.get_logger().info(
             f'Stable hover approach active for {self.pool_color}: '
             f'altitude={current_altitude_m:.2f} m, '
-            f'target={target_altitude_m:.2f} m.',
+            f'target={target_altitude_m:.2f} m, '
+            f'x={current_x_m:.2f}/{target_x_m:.2f}, '
+            f'y={current_y_m:.2f}/{target_y_m:.2f}.',
             throttle_duration_sec=1.0,
         )
         return py_trees.common.Status.RUNNING

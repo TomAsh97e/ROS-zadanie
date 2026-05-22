@@ -83,6 +83,12 @@ mission_behavior_tree:
     behavior_change_log_file: /home/mateusz/AbsoluteEdge/SImulation_Hydrolab/logs/behavior_changes.log
     capture_photo_hover_altitude_m: 4.0
     descent_target_altitude_m: 3.0
+    # Base waypoint in world frame (m); mission returns here first.
+    base_x_m: 0.0
+    base_y_m: -5.0
+    # Keep separate hover altitudes for base and launch return legs.
+    base_hover_altitude_m: 3.0
+    launch_hover_altitude_m: 3.0
 
 gimbal_controller:
   ros__parameters:

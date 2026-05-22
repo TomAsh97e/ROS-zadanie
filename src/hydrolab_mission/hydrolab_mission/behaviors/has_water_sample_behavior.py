@@ -8,5 +8,7 @@ class HasWaterSample(py_trees.behaviour.Behaviour):
         self.pool_color = pool_color
 
     def update(self):
-        # TODO: Check whether a water sample is already onboard.
+        # Temporary test switch controlled by mission parameter.
+        if bool(getattr(self.node, 'assume_sample_onboard', False)):
+            return py_trees.common.Status.SUCCESS
         return py_trees.common.Status.FAILURE
