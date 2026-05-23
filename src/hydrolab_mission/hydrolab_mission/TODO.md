@@ -34,6 +34,10 @@ try running the thing with the model for true baseny
 make the lauch quick and explsosive
 
 
+
+change the targets to gps coordinates
+
+
 ## Build & launch
 
 ```bash

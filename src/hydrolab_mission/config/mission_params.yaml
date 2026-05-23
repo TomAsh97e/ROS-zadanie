@@ -83,6 +83,14 @@ gimbal_controller:
     source_component_id: 191
     nadir_pitch_deg: -90.0
     nadir_earth_yaw_deg: 0.0
+    odom_topic: /fmu/out/vehicle_odometry
+    stabilization_enabled_search: true
+    stabilization_enabled_lock: true
+    stabilization_pitch_gain: 1.0
+    stabilization_roll_to_yaw_gain: 0.25
+    stabilization_max_pitch_offset_deg: 15.0
+    stabilization_max_yaw_offset_deg: 10.0
+    stabilization_attitude_lpf_alpha: 0.2
 
 gimbal_tracker:
   ros__parameters:

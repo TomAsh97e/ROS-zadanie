@@ -1,6 +1,8 @@
+import math
+
 from geometry_msgs.msg import Vector3
 from std_msgs.msg import String
-from px4_msgs.msg import VehicleCommand
+from px4_msgs.msg import VehicleCommand, VehicleOdometry
 import rclpy
 from rclpy.node import Node
 
@@ -13,6 +15,14 @@ class GimbalControllerNode(Node):
         self.declare_parameter('source_component_id', 191)
         self.declare_parameter('nadir_pitch_deg', -90.0)
         self.declare_parameter('nadir_earth_yaw_deg', 0.0)
+        self.declare_parameter('odom_topic', '/fmu/out/vehicle_odometry')
+        self.declare_parameter('stabilization_enabled_search', True)
+        self.declare_parameter('stabilization_enabled_lock', True)
+        self.declare_parameter('stabilization_pitch_gain', 1.0)
+        self.declare_parameter('stabilization_roll_to_yaw_gain', 0.25)
+        self.declare_parameter('stabilization_max_pitch_offset_deg', 15.0)
+        self.declare_parameter('stabilization_max_yaw_offset_deg', 10.0)
+        self.declare_parameter('stabilization_attitude_lpf_alpha', 0.2)
         
         self.declare_parameter('search_waypoints', [
             -65.0, 0.0,
@@ -38,6 +48,34 @@ class GimbalControllerNode(Node):
         self.nadir_pitch_deg = float(self.get_parameter('nadir_pitch_deg').value)
         self.nadir_earth_yaw_deg = float(
             self.get_parameter('nadir_earth_yaw_deg').value
+        )
+        self.odom_topic = str(self.get_parameter('odom_topic').value)
+        self.stabilization_enabled_search = bool(
+            self.get_parameter('stabilization_enabled_search').value
+        )
+        self.stabilization_enabled_lock = bool(
+            self.get_parameter('stabilization_enabled_lock').value
+        )
+        self.stabilization_pitch_gain = float(
+            self.get_parameter('stabilization_pitch_gain').value
+        )
+        self.stabilization_roll_to_yaw_gain = float(
+            self.get_parameter('stabilization_roll_to_yaw_gain').value
+        )
+        self.stabilization_max_pitch_offset_deg = max(
+            0.0,
+            float(self.get_parameter('stabilization_max_pitch_offset_deg').value),
+        )
+        self.stabilization_max_yaw_offset_deg = max(
+            0.0,
+            float(self.get_parameter('stabilization_max_yaw_offset_deg').value),
+        )
+        self.stabilization_attitude_lpf_alpha = float(
+            self.get_parameter('stabilization_attitude_lpf_alpha').value
+        )
+        self.stabilization_attitude_lpf_alpha = max(
+            0.0,
+            min(1.0, self.stabilization_attitude_lpf_alpha),
         )
         # Publish commands at 10Hz so PX4 doesn't time out.
         self.command_interval_s = 0.1
@@ -70,10 +108,24 @@ class GimbalControllerNode(Node):
             self.command_callback,
             10,
         )
+        self.odom_subscription = self.create_subscription(
+            VehicleOdometry,
+            self.odom_topic,
+            self.odom_callback,
+            10,
+        )
         
+        # Base orientation before stabilization feed-forward is applied.
+        self.base_roll_deg = 0.0
+        self.base_pitch_deg = 0.0
+        self.base_yaw_deg = 0.0
+        # Final command orientation after stabilization compensation.
         self.target_roll_deg = 0.0
         self.target_pitch_deg = 0.0
         self.target_yaw_deg = 0.0
+        self.filtered_vehicle_roll_deg = 0.0
+        self.filtered_vehicle_pitch_deg = 0.0
+        self.has_vehicle_attitude = False
         self.has_target = False
 
         # ==========================================
@@ -95,9 +147,9 @@ class GimbalControllerNode(Node):
     def target_callback(self, msg):
         if self.state == "NADIR_EARTH":
             return
-        self.target_roll_deg = float(msg.x)
-        self.target_pitch_deg = float(msg.y)
-        self.target_yaw_deg = float(msg.z)
+        self.base_roll_deg = float(msg.x)
+        self.base_pitch_deg = float(msg.y)
+        self.base_yaw_deg = float(msg.z)
         self.state = "LOCKED"
         self.last_target_time_s = self.get_clock().now().nanoseconds / 1e9
         self.has_target = True
@@ -125,17 +177,21 @@ class GimbalControllerNode(Node):
 
             # Grab the coordinates for the current step in the sequence
             target_p, target_y = self.search_waypoints[self.current_waypoint_index]
-            self.target_pitch_deg = target_p
-            self.target_yaw_deg = target_y
+            self.base_roll_deg = 0.0
+            self.base_pitch_deg = target_p
+            self.base_yaw_deg = target_y
             self.has_target = True
         elif self.state == "NADIR_EARTH":
             # Keep gimbal at a nadir orientation while hover controller runs.
-            self.target_pitch_deg = self.nadir_pitch_deg
-            self.target_yaw_deg = self.nadir_earth_yaw_deg
+            self.base_roll_deg = 0.0
+            self.base_pitch_deg = self.nadir_pitch_deg
+            self.base_yaw_deg = self.nadir_earth_yaw_deg
             self.has_target = True
 
         if not self.has_target:
             return
+        
+        self.update_command_orientation()
 
         if not hasattr(self, 'gimbal_configured'):
             self.configure_gimbal_manager()
@@ -163,9 +219,10 @@ class GimbalControllerNode(Node):
             self.get_logger().info("Gimbal received command: Entering Discrete Sequence Search.")
         elif cmd == "COMMAND_EARTH_NADIR":
             self.state = "NADIR_EARTH"
-            self.target_roll_deg = 0.0
-            self.target_pitch_deg = self.nadir_pitch_deg
-            self.target_yaw_deg = self.nadir_earth_yaw_deg
+            self.base_roll_deg = 0.0
+            self.base_pitch_deg = self.nadir_pitch_deg
+            self.base_yaw_deg = self.nadir_earth_yaw_deg
+            self.update_command_orientation()
             self.has_target = True
             self.get_logger().info(
                 "Gimbal received command: Holding earth-referenced nadir "
@@ -173,11 +230,75 @@ class GimbalControllerNode(Node):
             )
         elif cmd == "COMMAND_RESET":
             self.state = "IDLE"
-            self.target_roll_deg = 0.0
-            self.target_pitch_deg = 0.0
-            self.target_yaw_deg = 0.0
+            self.base_roll_deg = 0.0
+            self.base_pitch_deg = 0.0
+            self.base_yaw_deg = 0.0
+            self.update_command_orientation()
             self.has_target = True
             self.get_logger().info("Gimbal received command: Resetting to IDLE neutral.")
+
+    def odom_callback(self, msg):
+        roll_deg, pitch_deg = self.quaternion_to_roll_pitch_deg(msg.q)
+        if not self.has_vehicle_attitude:
+            self.filtered_vehicle_roll_deg = roll_deg
+            self.filtered_vehicle_pitch_deg = pitch_deg
+            self.has_vehicle_attitude = True
+            return
+
+        alpha = self.stabilization_attitude_lpf_alpha
+        self.filtered_vehicle_roll_deg = (
+            alpha * roll_deg
+        ) + ((1.0 - alpha) * self.filtered_vehicle_roll_deg)
+        self.filtered_vehicle_pitch_deg = (
+            alpha * pitch_deg
+        ) + ((1.0 - alpha) * self.filtered_vehicle_pitch_deg)
+
+    def update_command_orientation(self):
+        self.target_roll_deg = self.base_roll_deg
+        self.target_pitch_deg = self.base_pitch_deg
+        self.target_yaw_deg = self.base_yaw_deg
+
+        if not self.should_apply_stabilization():
+            return
+
+        pitch_offset_deg = -self.stabilization_pitch_gain * self.filtered_vehicle_pitch_deg
+        yaw_offset_deg = -self.stabilization_roll_to_yaw_gain * self.filtered_vehicle_roll_deg
+        pitch_offset_deg = max(
+            -self.stabilization_max_pitch_offset_deg,
+            min(self.stabilization_max_pitch_offset_deg, pitch_offset_deg),
+        )
+        yaw_offset_deg = max(
+            -self.stabilization_max_yaw_offset_deg,
+            min(self.stabilization_max_yaw_offset_deg, yaw_offset_deg),
+        )
+        self.target_pitch_deg += pitch_offset_deg
+        self.target_yaw_deg += yaw_offset_deg
+
+    def should_apply_stabilization(self):
+        if not self.has_vehicle_attitude:
+            return False
+        if self.state == "SEARCHING":
+            return self.stabilization_enabled_search
+        if self.state == "LOCKED":
+            return self.stabilization_enabled_lock
+        return False
+
+    @staticmethod
+    def quaternion_to_roll_pitch_deg(q):
+        qw = float(q[0])
+        qx = float(q[1])
+        qy = float(q[2])
+        qz = float(q[3])
+
+        sinr_cosp = 2.0 * ((qw * qx) + (qy * qz))
+        cosr_cosp = 1.0 - 2.0 * ((qx * qx) + (qy * qy))
+        roll_rad = math.atan2(sinr_cosp, cosr_cosp)
+
+        sinp = 2.0 * ((qw * qy) - (qz * qx))
+        sinp = max(-1.0, min(1.0, sinp))
+        pitch_rad = math.asin(sinp)
+
+        return math.degrees(roll_rad), math.degrees(pitch_rad)
 
     def configure_gimbal_manager(self):
         self.publish_vehicle_command(
