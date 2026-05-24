@@ -74,6 +74,9 @@ class MissionBehaviorTree(Node):
         self.declare_parameter('descent_step_m', 0.15)
         self.declare_parameter('descent_command_period_s', 0.4)
         self.declare_parameter('capture_photo_hover_altitude_m', 4.0)
+        self.declare_parameter('capture_photo_velocity_tolerance_xy_m_s', 0.2)
+        self.declare_parameter('capture_photo_velocity_tolerance_z_m_s', 0.15)
+        self.declare_parameter('photo_taking_hover_timeout_s', 20.0)
         self.declare_parameter('descent_target_altitude_m', 0.0)
         self.declare_parameter('base_x_m', 0.0)
         self.declare_parameter('base_y_m', 0.0)
@@ -159,6 +162,22 @@ class MissionBehaviorTree(Node):
         )
         self.capture_photo_hover_altitude_m = float(
             self.get_parameter('capture_photo_hover_altitude_m').value
+        )
+        self.capture_photo_velocity_tolerance_xy_m_s = max(
+            float(
+                self.get_parameter('capture_photo_velocity_tolerance_xy_m_s').value
+            ),
+            0.0,
+        )
+        self.capture_photo_velocity_tolerance_z_m_s = max(
+            float(
+                self.get_parameter('capture_photo_velocity_tolerance_z_m_s').value
+            ),
+            0.0,
+        )
+        self.photo_taking_hover_timeout_s = max(
+            float(self.get_parameter('photo_taking_hover_timeout_s').value),
+            0.1,
         )
         self.descent_target_altitude_m = float(
             self.get_parameter('descent_target_altitude_m').value
@@ -269,6 +288,7 @@ class MissionBehaviorTree(Node):
         self.blackboard = py_trees.blackboard.Client(name="Master")
         self.blackboard.register_key(key="home_position", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="current_position", access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="current_velocity", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="gimbal_status", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="pilot_ready", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="target_detected", access=py_trees.common.Access.WRITE)
@@ -276,6 +296,7 @@ class MissionBehaviorTree(Node):
         self.blackboard.register_key(key="arming_state", access=py_trees.common.Access.WRITE)
         self.blackboard.home_position = None
         self.blackboard.current_position = None
+        self.blackboard.current_velocity = None
         self.blackboard.gimbal_status = "STATUS_IDLE"
         self.blackboard.pilot_ready = False
         self.blackboard.target_detected = False
@@ -568,7 +589,9 @@ class MissionBehaviorTree(Node):
 
     def odometry_callback(self, msg):
         current_pos = [msg.position[0], msg.position[1], msg.position[2]]
+        current_vel = [msg.velocity[0], msg.velocity[1], msg.velocity[2]]
         self.blackboard.current_position = current_pos
+        self.blackboard.current_velocity = current_vel
 
         if self.blackboard.home_position is None:
             self.blackboard.home_position = current_pos

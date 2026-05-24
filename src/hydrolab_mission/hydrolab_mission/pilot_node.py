@@ -28,12 +28,19 @@ class PilotNode(Node):
         self.declare_parameter('approach_contract_topic', '/mission/approach_contract')
         self.declare_parameter('raycast_distance_topic', '/pilot/raycast_distance_m')
         self.declare_parameter('ibvs_velocity_topic', '/pilot/ibvs_velocity_cmd')
+        self.declare_parameter('target_topic', '/pilot/target_position')
+        self.declare_parameter(
+            'corrected_target_topic',
+            '/pilot/target_position_corrected',
+        )
         self.declare_parameter('ibvs_cmd_timeout_s', 0.5)
         self.declare_parameter('ibvs_max_speed_m_s', 0.8)
         self.declare_parameter('ball_hover_error_gain', 0.18)
         self.declare_parameter('ball_hover_deadband', 0.05)
         self.declare_parameter('descent_min_speed_m_s', 0.2)
         self.declare_parameter('raycast_distance_timeout_s', 0.5)
+        self.declare_parameter('face_target_min_distance_m', 0.2)
+        self.declare_parameter('max_yaw_rate_deg_s', 60.0)
 
         self.max_altitude_m = float(self.get_parameter('max_altitude_m').value)
         self.max_speed_m_s = max(
@@ -51,6 +58,10 @@ class PilotNode(Node):
         )
         self.ibvs_velocity_topic = str(
             self.get_parameter('ibvs_velocity_topic').value
+        )
+        self.target_topic = str(self.get_parameter('target_topic').value)
+        self.corrected_target_topic = str(
+            self.get_parameter('corrected_target_topic').value
         )
         self.ibvs_cmd_timeout_s = max(
             float(self.get_parameter('ibvs_cmd_timeout_s').value),
@@ -79,6 +90,13 @@ class PilotNode(Node):
         self.raycast_distance_timeout_s = max(
             float(self.get_parameter('raycast_distance_timeout_s').value),
             0.05,
+        )
+        self.face_target_min_distance_m = max(
+            float(self.get_parameter('face_target_min_distance_m').value),
+            0.0,
+        )
+        self.max_yaw_rate_rad_s = math.radians(
+            max(float(self.get_parameter('max_yaw_rate_deg_s').value), 1.0)
         )
         self.control_period_s = 0.1
 
@@ -110,8 +128,14 @@ class PilotNode(Node):
 
         self.target_subscriber = self.create_subscription(
             Point,
-            '/pilot/target_position',
-            self.target_callback,
+            self.target_topic,
+            self.target_uncorrected_callback,
+            10,
+        )
+        self.corrected_target_subscriber = self.create_subscription(
+            Point,
+            self.corrected_target_topic,
+            self.target_corrected_callback,
             10,
         )
         self.odom_subscriber = self.create_subscription(
@@ -164,9 +188,11 @@ class PilotNode(Node):
         )
 
         self.current_target = [0.0, 0.0, 0.0]
+        self.current_position = None
         self.requested_target = None
         self.home_position = None
         self.current_yaw = 0.0
+        self.command_yaw = 0.0
         self.heartbeat_counter = 0
         self.vehicle_connected = False
         self.ball_mode = 'idle'
@@ -379,7 +405,17 @@ class PilotNode(Node):
             )
             self.last_hover_log_ns = now_ns
 
-    def target_callback(self, msg):
+    def target_uncorrected_callback(self, msg):
+        if self.use_corrected_target_stream():
+            return
+        self.apply_target_from_msg(msg)
+
+    def target_corrected_callback(self, msg):
+        if not self.use_corrected_target_stream():
+            return
+        self.apply_target_from_msg(msg)
+
+    def apply_target_from_msg(self, msg):
         requested_target = [msg.x, msg.y, msg.z]
         clamped_target = self._sanitize_target(requested_target)
         self.requested_target = clamped_target
@@ -396,35 +432,42 @@ class PilotNode(Node):
             throttle_duration_sec=1.0,
         )
 
-    def odometry_callback(self, msg):
-        if self.vehicle_connected:
-            return
+    def use_corrected_target_stream(self):
+        return (
+            self.approach_contract_active
+            and self.approach_tracking_mode == 'initial_approach'
+        )
 
-        self.vehicle_connected = True
-        self.home_position = [
+    def odometry_callback(self, msg):
+        position = [
             float(msg.position[0]),
             float(msg.position[1]),
             float(msg.position[2]),
         ]
-        self.current_target = self.home_position.copy()
+        self.current_position = position
 
         q = msg.q
         self.current_yaw = math.atan2(
             2.0 * (q[0] * q[3] + q[1] * q[2]),
             1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]),
         )
+        if not self.vehicle_connected:
+            self.vehicle_connected = True
+            self.home_position = position.copy()
+            self.current_target = self.home_position.copy()
+            self.command_yaw = self.current_yaw
 
-        if self.requested_target is None:
-            self.requested_target = self.home_position.copy()
-        else:
-            self.requested_target = self._sanitize_target(self.requested_target)
+            if self.requested_target is None:
+                self.requested_target = self.home_position.copy()
+            else:
+                self.requested_target = self._sanitize_target(self.requested_target)
 
-        self.get_logger().info('✅ Connection established! Telemetry received.')
-        self.get_logger().info(
-            f'🔒 Locked initial yaw at {self.current_yaw:.2f} rad and home at '
-            f'({self.home_position[0]:.2f}, {self.home_position[1]:.2f}, '
-            f'{self.home_position[2]:.2f})'
-        )
+            self.get_logger().info('✅ Connection established! Telemetry received.')
+            self.get_logger().info(
+                f'🔒 Locked initial yaw at {self.current_yaw:.2f} rad and home at '
+                f'({self.home_position[0]:.2f}, {self.home_position[1]:.2f}, '
+                f'{self.home_position[2]:.2f})'
+            )
 
     def timer_callback(self):
         if self.landing_active:
@@ -561,10 +604,27 @@ class PilotNode(Node):
             )
         msg.acceleration = [math.nan, math.nan, math.nan]
         msg.jerk = [math.nan, math.nan, math.nan]
-        msg.yaw = self.current_yaw
+        msg.yaw = self.compute_setpoint_yaw()
         msg.yawspeed = math.nan
         msg.timestamp = self.timestamp_us()
         self.setpoint_publisher.publish(msg)
+
+    def compute_setpoint_yaw(self):
+        if self.current_position is None or self.is_hover_velocity_mode_active():
+            return self.command_yaw
+        delta_x = self.current_target[0] - self.current_position[0]
+        delta_y = self.current_target[1] - self.current_position[1]
+        horizontal_distance = math.hypot(delta_x, delta_y)
+        if horizontal_distance < self.face_target_min_distance_m:
+            return self.command_yaw
+        desired_yaw = math.atan2(delta_y, delta_x)
+        max_step = self.max_yaw_rate_rad_s * self.control_period_s
+        self.command_yaw = self.step_angle_towards(
+            self.command_yaw,
+            desired_yaw,
+            max_step,
+        )
+        return self.command_yaw
 
     def arm_drone(self):
         self.get_logger().info('Arming Drone...')
@@ -707,6 +767,17 @@ class PilotNode(Node):
     @staticmethod
     def clamp(value, lower, upper):
         return max(lower, min(upper, value))
+
+    @staticmethod
+    def wrap_angle(angle):
+        return math.atan2(math.sin(angle), math.cos(angle))
+
+    @classmethod
+    def step_angle_towards(cls, current, desired, max_step):
+        error = cls.wrap_angle(desired - current)
+        if abs(error) <= max_step:
+            return cls.wrap_angle(desired)
+        return cls.wrap_angle(current + math.copysign(max_step, error))
 
     def timestamp_us(self):
         return int(self.get_clock().now().nanoseconds / 1000)

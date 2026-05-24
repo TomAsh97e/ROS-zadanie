@@ -1,0 +1,8 @@
+
+=== mission_behavior_tree session started ===
+1779579653257151627 | Root [Selector] INVALID -> RUNNING
+1779579653257151627 | Safety [Sequence] INVALID -> FAILURE
+1779579653257151627 | Is Time Exceeded? [Inverter] INVALID -> FAILURE
+1779579653257151627 | Check Mission Time > 9.5m [CheckTimeLimit] INVALID -> SUCCESS
+1779579653257151627 | Main Mission [Sequence] INVALID -> RUNNING
+1779579653257151627 | Check Odometry [CheckOdometry] INVALID -> RUNNING

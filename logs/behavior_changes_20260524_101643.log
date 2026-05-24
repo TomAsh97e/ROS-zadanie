@@ -1,0 +1,123 @@
+
+=== mission_behavior_tree session started ===
+1779610603743668958 | Root [Selector] INVALID -> RUNNING
+1779610603743668958 | Safety [Sequence] INVALID -> FAILURE
+1779610603743668958 | Is Time Exceeded? [Inverter] INVALID -> FAILURE
+1779610603743668958 | Check Mission Time > 9.5m [CheckTimeLimit] INVALID -> SUCCESS
+1779610603743668958 | Main Mission [Sequence] INVALID -> RUNNING
+1779610603743668958 | Check Odometry [CheckOdometry] INVALID -> SUCCESS
+1779610603743668958 | Check Pilot Ready [CheckPilotReady] INVALID -> RUNNING
+1779610604536523566 | Check Pilot Ready [CheckPilotReady] RUNNING -> SUCCESS
+1779610604536523566 | Retry Takeoff [Retry] INVALID -> RUNNING
+1779610604536523566 | Takeoff to 5.0m [Takeoff] INVALID -> RUNNING
+1779610608734771555 | Takeoff to 5.0m [Takeoff] RUNNING -> FAILURE
+1779610608933161567 | Takeoff to 5.0m [Takeoff] FAILURE -> RUNNING
+1779610622743256099 | Retry Takeoff [Retry] RUNNING -> SUCCESS
+1779610622743256099 | Takeoff to 5.0m [Takeoff] RUNNING -> SUCCESS
+1779610622743256099 | Retry Red Recon [Retry] INVALID -> RUNNING
+1779610622743256099 | Red Pool Recon Task [Sequence] INVALID -> RUNNING
+1779610622743256099 | Detect Red Pool [TogglePoolDetection] INVALID -> RUNNING
+1779610622743256099 | Red Pool Acquire [Selector] INVALID -> RUNNING
+1779610622743256099 | Red Guide Mode [Sequence] INVALID -> FAILURE
+1779610622743256099 | Red Target Acquired? [IsTargetLocked] INVALID -> FAILURE
+1779610622743256099 | Red Search Mode [Sequence] INVALID -> RUNNING
+1779610622743256099 | Fly To Red Pool [FlyToPool] INVALID -> RUNNING
+1779610623548003332 | Red Guide Mode [Sequence] FAILURE -> RUNNING
+1779610623548003332 | Red Target Acquired? [IsTargetLocked] FAILURE -> SUCCESS
+1779610623548003332 | Approach Red Pool [ApproachPool] INVALID -> RUNNING
+1779610635136227424 | Approach Red Pool [ApproachPool] RUNNING -> SUCCESS
+1779610635136227424 | Red Post-Approach Guard [Sequence] INVALID -> RUNNING
+1779610635136227424 | Red Target Still Detected? [IsTargetLocked] INVALID -> SUCCESS
+1779610635136227424 | Red Post-Approach Actions [Sequence] INVALID -> RUNNING
+1779610635136227424 | Capture Photo At Stable Hover (Red) [CapturePhotoAtStableHover] INVALID -> RUNNING
+1779610655156404561 | Retry Red Recon [Retry] RUNNING -> SUCCESS
+1779610655156404561 | Red Pool Recon Task [Sequence] RUNNING -> SUCCESS
+1779610655156404561 | Detect Red Pool [TogglePoolDetection] RUNNING -> SUCCESS
+1779610655156404561 | Red Pool Acquire [Selector] RUNNING -> SUCCESS
+1779610655156404561 | Red Guide Mode [Sequence] RUNNING -> SUCCESS
+1779610655156404561 | Red Post-Approach Guard [Sequence] RUNNING -> SUCCESS
+1779610655156404561 | Red Post-Approach Actions [Sequence] RUNNING -> SUCCESS
+1779610655156404561 | Capture Photo At Stable Hover (Red) [CapturePhotoAtStableHover] RUNNING -> SUCCESS
+1779610655156404561 | Retry Green Recon [Retry] INVALID -> RUNNING
+1779610655156404561 | Green Pool Recon Task [Sequence] INVALID -> RUNNING
+1779610655156404561 | Detect Green Pool [TogglePoolDetection] INVALID -> RUNNING
+1779610655156404561 | Green Pool Acquire [Selector] INVALID -> RUNNING
+1779610655156404561 | Green Guide Mode [Sequence] INVALID -> FAILURE
+1779610655156404561 | Green Target Acquired? [IsTargetLocked] INVALID -> FAILURE
+1779610655156404561 | Green Search Mode [Sequence] INVALID -> RUNNING
+1779610655156404561 | Fly To Green Pool [FlyToPool] INVALID -> RUNNING
+1779610662139232088 | Green Guide Mode [Sequence] FAILURE -> RUNNING
+1779610662139232088 | Green Target Acquired? [IsTargetLocked] FAILURE -> SUCCESS
+1779610662139232088 | Approach Green Pool [ApproachPool] INVALID -> RUNNING
+1779610666344821731 | Approach Green Pool [ApproachPool] RUNNING -> SUCCESS
+1779610666344821731 | Green Post-Approach Guard [Sequence] INVALID -> RUNNING
+1779610666344821731 | Green Target Still Detected? [IsTargetLocked] INVALID -> SUCCESS
+1779610666344821731 | Green Post-Approach Actions [Sequence] INVALID -> RUNNING
+1779610666344821731 | Capture Photo At Stable Hover (Green) [CapturePhotoAtStableHover] INVALID -> RUNNING
+1779610686372301651 | Retry Green Recon [Retry] RUNNING -> SUCCESS
+1779610686372301651 | Green Pool Recon Task [Sequence] RUNNING -> SUCCESS
+1779610686372301651 | Detect Green Pool [TogglePoolDetection] RUNNING -> SUCCESS
+1779610686372301651 | Green Pool Acquire [Selector] RUNNING -> SUCCESS
+1779610686372301651 | Green Guide Mode [Sequence] RUNNING -> SUCCESS
+1779610686372301651 | Green Post-Approach Guard [Sequence] RUNNING -> SUCCESS
+1779610686372301651 | Green Post-Approach Actions [Sequence] RUNNING -> SUCCESS
+1779610686372301651 | Capture Photo At Stable Hover (Green) [CapturePhotoAtStableHover] RUNNING -> SUCCESS
+1779610686372301651 | Retry Blue Recon [Retry] INVALID -> RUNNING
+1779610686372301651 | Blue Pool Recon Task [Sequence] INVALID -> RUNNING
+1779610686372301651 | Detect Blue Pool [TogglePoolDetection] INVALID -> RUNNING
+1779610686372301651 | Blue Pool Acquire [Selector] INVALID -> RUNNING
+1779610686372301651 | Blue Guide Mode [Sequence] INVALID -> FAILURE
+1779610686372301651 | Blue Target Acquired? [IsTargetLocked] INVALID -> FAILURE
+1779610686372301651 | Blue Search Mode [Sequence] INVALID -> RUNNING
+1779610686372301651 | Fly To Blue Pool [FlyToPool] INVALID -> RUNNING
+1779610693137250931 | Blue Guide Mode [Sequence] FAILURE -> RUNNING
+1779610693137250931 | Blue Target Acquired? [IsTargetLocked] FAILURE -> SUCCESS
+1779610693137250931 | Approach Blue Pool [ApproachPool] INVALID -> RUNNING
+1779610697349249388 | Approach Blue Pool [ApproachPool] RUNNING -> SUCCESS
+1779610697349249388 | Blue Post-Approach Guard [Sequence] INVALID -> RUNNING
+1779610697349249388 | Blue Target Still Detected? [IsTargetLocked] INVALID -> SUCCESS
+1779610697349249388 | Blue Post-Approach Actions [Sequence] INVALID -> RUNNING
+1779610697349249388 | Capture Photo At Stable Hover (Blue) [CapturePhotoAtStableHover] INVALID -> RUNNING
+1779610710967846361 | Retry Blue Recon [Retry] RUNNING -> SUCCESS
+1779610710967846361 | Blue Pool Recon Task [Sequence] RUNNING -> SUCCESS
+1779610710967846361 | Detect Blue Pool [TogglePoolDetection] RUNNING -> SUCCESS
+1779610710967846361 | Blue Pool Acquire [Selector] RUNNING -> SUCCESS
+1779610710967846361 | Blue Guide Mode [Sequence] RUNNING -> SUCCESS
+1779610710967846361 | Blue Post-Approach Guard [Sequence] RUNNING -> SUCCESS
+1779610710967846361 | Blue Post-Approach Actions [Sequence] RUNNING -> SUCCESS
+1779610710967846361 | Capture Photo At Stable Hover (Blue) [CapturePhotoAtStableHover] RUNNING -> SUCCESS
+1779610710967846361 | Retry Yellow Sampling [Retry] INVALID -> RUNNING
+1779610710967846361 | Yellow Final Pool Task [Sequence] INVALID -> RUNNING
+1779610710967846361 | Detect Yellow Pool [TogglePoolDetection] INVALID -> RUNNING
+1779610710967846361 | Yellow Pool Acquire [Selector] INVALID -> RUNNING
+1779610710967846361 | Yellow Guide Mode [Sequence] INVALID -> FAILURE
+1779610710967846361 | Yellow Target Acquired? [IsTargetLocked] INVALID -> FAILURE
+1779610710967846361 | Yellow Search Mode [Sequence] INVALID -> RUNNING
+1779610710967846361 | Fly To Yellow Pool [FlyToPool] INVALID -> RUNNING
+1779610717538425630 | Yellow Guide Mode [Sequence] FAILURE -> RUNNING
+1779610717538425630 | Yellow Target Acquired? [IsTargetLocked] FAILURE -> SUCCESS
+1779610717538425630 | Approach Yellow Pool [ApproachPool] INVALID -> RUNNING
+1779610722139422193 | Approach Yellow Pool [ApproachPool] RUNNING -> SUCCESS
+1779610722139422193 | Yellow Post-Approach Guard [Sequence] INVALID -> RUNNING
+1779610722139422193 | Yellow Target Still Detected? [IsTargetLocked] INVALID -> SUCCESS
+1779610722139422193 | Yellow Post-Approach Actions [Sequence] INVALID -> RUNNING
+1779610722139422193 | Capture Photo At Stable Hover (Yellow) [CapturePhotoAtStableHover] INVALID -> RUNNING
+1779610734954916449 | Capture Photo At Stable Hover (Yellow) [CapturePhotoAtStableHover] RUNNING -> SUCCESS
+1779610734954916449 | Descend Over Yellow Pool [DescendOverPool] INVALID -> RUNNING
+1779610743140824939 | Retry Yellow Sampling [Retry] RUNNING -> SUCCESS
+1779610743140824939 | Yellow Final Pool Task [Sequence] RUNNING -> SUCCESS
+1779610743140824939 | Detect Yellow Pool [TogglePoolDetection] RUNNING -> SUCCESS
+1779610743140824939 | Yellow Pool Acquire [Selector] RUNNING -> SUCCESS
+1779610743140824939 | Yellow Guide Mode [Sequence] RUNNING -> SUCCESS
+1779610743140824939 | Yellow Post-Approach Guard [Sequence] RUNNING -> SUCCESS
+1779610743140824939 | Yellow Post-Approach Actions [Sequence] RUNNING -> SUCCESS
+1779610743140824939 | Descend Over Yellow Pool [DescendOverPool] RUNNING -> SUCCESS
+1779610743140824939 | Collect Sample (Yellow) [CollectWaterSample] INVALID -> SUCCESS
+1779610743140824939 | Verify Sample (Yellow) [VerifySampleCollected] INVALID -> SUCCESS
+1779610743140824939 | Return To Base [ReturnToBase] INVALID -> RUNNING
+1779610781145261055 | Return To Base [ReturnToBase] RUNNING -> SUCCESS
+1779610781145261055 | Drop Water At Base [DropWater] INVALID -> SUCCESS
+1779610781145261055 | Land At Launch [Land] INVALID -> RUNNING
+1779610803938044474 | Land At Launch [Land] RUNNING -> SUCCESS
+1779610803938044474 | Disarm Motors [Disarm] INVALID -> SUCCESS
+1779610803938044474 | Post Mission Idle [PostMissionIdle] INVALID -> RUNNING

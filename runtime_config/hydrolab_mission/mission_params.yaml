@@ -4,16 +4,21 @@ pilot_node:
     max_speed_m_s: 3.0
     hover_contract_topic: /mission/hover_contract
     ibvs_velocity_topic: /pilot/ibvs_velocity_cmd
+    target_topic: /pilot/target_position
+    corrected_target_topic: /pilot/target_position_corrected
     ibvs_cmd_timeout_s: 0.5
     raycast_distance_timeout_s: 1.0
     ibvs_max_speed_m_s: 0.8
     ball_hover_error_gain: 0.18
     ball_hover_deadband: 0.05
+    face_target_min_distance_m: 3.0
+    max_yaw_rate_deg_s: 60.0
 
 raycasted_approach_coordinator_node:
   ros__parameters:
     control_interval_s: 0.
     target_topic: /pilot/target_position
+    corrected_target_topic: /pilot/target_position_corrected
     approach_contract_topic: /mission/approach_contract
     gimbal_status_topic: /gimbal/status
     gimbal_orientation_topic: /gimbal/current_orientation_deg
@@ -32,6 +37,8 @@ raycasted_approach_coordinator_node:
     camera_offset_y_m: 0.0
     camera_offset_z_m: 0.0
     max_raycast_distance_m: 25.0
+    raycasted_approach_cprrection_m: 2.0
+    mission_operating_alitutde_m: 5.0
 
 hover_controller:
   ros__parameters:
@@ -82,6 +89,9 @@ mission_behavior_tree:
     target_detected_timeout_s: 1.0
     behavior_change_log_file: /home/mateusz/AbsoluteEdge/SImulation_Hydrolab/logs/behavior_changes.log
     capture_photo_hover_altitude_m: 4.0
+    photo_taking_hover_timeout_s: 20.0
+    capture_photo_velocity_tolerance_xy_m_s: 0.2
+    capture_photo_velocity_tolerance_z_m_s: 0.15
     descent_target_altitude_m: 3.0
     # Base waypoint in world frame (m); mission returns here first.
     base_x_m: 0.0

@@ -33,7 +33,9 @@ try running the thing with the model for true baseny
 
 make the lauch quick and explsosive
 
+add correction to the raycasted approach, but make sure it is only taken into consideration while in approach mode
 
+make sure hovering to take a phot takes place at correct height.
 
 change the targets to gps coordinates
 

@@ -16,6 +16,10 @@ class RaycastedApproachCoordinatorNode(Node):
 
         self.declare_parameter('control_interval_s', 0.1)
         self.declare_parameter('target_topic', '/pilot/target_position')
+        self.declare_parameter(
+            'corrected_target_topic',
+            '/pilot/target_position_corrected',
+        )
         self.declare_parameter('approach_contract_topic', '/mission/approach_contract')
         self.declare_parameter('raycast_distance_topic', '/pilot/raycast_distance_m')
         self.declare_parameter('gimbal_status_topic', '/gimbal/status')
@@ -35,6 +39,8 @@ class RaycastedApproachCoordinatorNode(Node):
         self.declare_parameter('camera_offset_y_m', 0.0)
         self.declare_parameter('camera_offset_z_m', 0.0)
         self.declare_parameter('max_raycast_distance_m', 25.0)
+        self.declare_parameter('raycasted_approach_cprrection_m', 0.0)
+        self.declare_parameter('mission_operating_alitutde_m', 0.0)
 
         self.control_interval_s = max(
             float(self.get_parameter('control_interval_s').value),
@@ -73,8 +79,19 @@ class RaycastedApproachCoordinatorNode(Node):
             float(self.get_parameter('max_raycast_distance_m').value),
             0.1,
         )
+        self.raycasted_approach_cprrection_m = max(
+            float(self.get_parameter('raycasted_approach_cprrection_m').value),
+            0.0,
+        )
+        self.mission_operating_alitutde_m = max(
+            float(self.get_parameter('mission_operating_alitutde_m').value),
+            0.0,
+        )
 
         target_topic = str(self.get_parameter('target_topic').value)
+        corrected_target_topic = str(
+            self.get_parameter('corrected_target_topic').value
+        )
         approach_contract_topic = str(
             self.get_parameter('approach_contract_topic').value
         )
@@ -88,6 +105,11 @@ class RaycastedApproachCoordinatorNode(Node):
         detection_topic = str(self.get_parameter('detection_topic').value)
 
         self.target_publisher = self.create_publisher(Point, target_topic, 10)
+        self.corrected_target_publisher = self.create_publisher(
+            Point,
+            corrected_target_topic,
+            10,
+        )
         self.raycast_distance_publisher = self.create_publisher(
             Float32,
             raycast_distance_topic,
@@ -159,7 +181,8 @@ class RaycastedApproachCoordinatorNode(Node):
         )
         self.get_logger().info(
             'Raycasted approach coordinator initialized. '
-            f'Publishing to {target_topic}'
+            f'Publishing to {target_topic} '
+            f'and corrected target to {corrected_target_topic}'
         )
 
     def odometry_callback(self, msg):
@@ -325,7 +348,9 @@ class RaycastedApproachCoordinatorNode(Node):
         self.raycast_distance_publisher.publish(distance_msg)
         target_x = camera_origin_world[0] + (t * ray_world[0])
         target_y = camera_origin_world[1] + (t * ray_world[1])
-        target_z = self.current_position[2]
+        target_z = (
+            self.home_position[2] - self.mission_operating_alitutde_m
+        )
         if (
             self.contract_tracking_mode == 'descent'
             and self.contract_target_altitude_m is not None
@@ -338,6 +363,16 @@ class RaycastedApproachCoordinatorNode(Node):
         msg.y = float(target_y)
         msg.z = float(target_z)
         self.target_publisher.publish(msg)
+
+        corrected_t = max(0.0, t - self.raycasted_approach_cprrection_m)
+        corrected_target_x = camera_origin_world[0] + (corrected_t * ray_world[0])
+        corrected_target_y = camera_origin_world[1] + (corrected_t * ray_world[1])
+
+        corrected_msg = Point()
+        corrected_msg.x = float(corrected_target_x)
+        corrected_msg.y = float(corrected_target_y)
+        corrected_msg.z = float(target_z)
+        self.corrected_target_publisher.publish(corrected_msg)
 
         now_ns = self.get_clock().now().nanoseconds
         if now_ns - self.last_log_ns >= int(1e9):
