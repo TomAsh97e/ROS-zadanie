@@ -48,6 +48,17 @@ DEFAULT_POOL_XY = {
 }
 
 
+class TestModeEnabled(py_trees.behaviour.Behaviour):
+    def __init__(self, name, node):
+        super().__init__(name)
+        self.node = node
+
+    def update(self):
+        if self.node.test_mode:
+            return py_trees.common.Status.SUCCESS
+        return py_trees.common.Status.FAILURE
+
+
 class MissionBehaviorTree(Node):
     def __init__(self):
         super().__init__('mission_behavior_tree')
@@ -82,6 +93,8 @@ class MissionBehaviorTree(Node):
         self.declare_parameter('base_y_m', 0.0)
         self.declare_parameter('base_hover_altitude_m', 3.0)
         self.declare_parameter('launch_hover_altitude_m', 3.0)
+        self.declare_parameter('test_mode', False)
+        self.declare_parameter('test_takeoff_height_m', 1.0)
         self.declare_parameter('target_detected_timeout_s', 1.0)
         self.declare_parameter(
             'behavior_change_log_file',
@@ -190,6 +203,11 @@ class MissionBehaviorTree(Node):
         )
         self.launch_hover_altitude_m = max(
             float(self.get_parameter('launch_hover_altitude_m').value),
+            0.5,
+        )
+        self.test_mode = bool(self.get_parameter('test_mode').value)
+        self.test_takeoff_height_m = max(
+            float(self.get_parameter('test_takeoff_height_m').value),
             0.5,
         )
         self.target_detected_timeout_s = max(
@@ -319,6 +337,7 @@ class MissionBehaviorTree(Node):
         self.timer = self.create_timer(0.2, self.tick_tree)
         self.get_logger().info(
             'Behavior Tree Node Initialized. '
+            f'Mission profile: {"TEST" if self.test_mode else "FULL"}. '
             f'Pool mission colors: {" -> ".join(self.mission_pool_colors)} '
             f'(final: {self.final_pool_color}).'
         )
@@ -501,23 +520,43 @@ class MissionBehaviorTree(Node):
             num_failures=3,
         )
 
-    def create_behavior_tree(self):
-        root = py_trees.composites.Selector(name="Root", memory=False)
-
-        # [->] Branch 1: Safety (Sequence)
-        safety_sequence = py_trees.composites.Sequence(name="Safety", memory=False)
-        check_time = CheckTimeLimit(name="Check Mission Time > 9.5m")
-        # Invert the check_time so sequence continues ONLY if Time Limit check FAILS (i.e. > 9.5s)
-        time_limit_exceeded = py_trees.decorators.Inverter(name="Is Time Exceeded?", child=check_time)
-        rtl = ReturnToLaunch(
-            name="Return to Launch",
-            node=self,
-            target_hover_altitude_m=self.launch_hover_altitude_m,
-            position_tolerance_m=self.position_tolerance_m,
+    def _create_test_mission_sequence(self):
+        test_mission = py_trees.composites.Sequence(name="Test Mission", memory=True)
+        test_mission.add_children(
+            [
+                TestModeEnabled(name="Test Mode Enabled?", node=self),
+                CheckOdometry(name="Check Odometry (Test)", node=self),
+                CheckPilotReady(name="Check Pilot Ready (Test)", node=self),
+                py_trees.decorators.Retry(
+                    name="Retry Test Takeoff",
+                    child=Takeoff(
+                        name=f"Test Takeoff to {self.test_takeoff_height_m}m",
+                        node=self,
+                        target_z=-self.test_takeoff_height_m,
+                        start_timeout_s=self.takeoff_start_timeout_s,
+                        min_progress_m=self.takeoff_min_progress_m,
+                    ),
+                    num_failures=self.takeoff_retry_attempts,
+                ),
+                Land(
+                    name="Test Land At Launch",
+                    node=self,
+                    approach_hover_altitude_m=self.test_takeoff_height_m,
+                    position_tolerance_m=self.position_tolerance_m,
+                ),
+                Disarm(
+                    name="Disarm Motors (Test)",
+                    node=self,
+                ),
+                PostMissionIdle(
+                    name="Post Mission Idle (Test)",
+                    node=self,
+                ),
+            ]
         )
-        safety_sequence.add_children([time_limit_exceeded, rtl])
+        return test_mission
 
-        # [->] Branch 2: Main Mission (Sequence)
+    def _create_full_mission_sequence(self):
         main_mission = py_trees.composites.Sequence(name="Main Mission", memory=True)
 
         check_odom = CheckOdometry(name="Check Odometry", node=self)
@@ -526,7 +565,6 @@ class MissionBehaviorTree(Node):
         check_pilot_ready = CheckPilotReady(name="Check Pilot Ready", node=self)
         main_mission.add_child(check_pilot_ready)
 
-        # Step 1: Action: Takeoff
         takeoff = Takeoff(
             name=f"Takeoff to {self.takeoff_height_m}m",
             node=self,
@@ -541,14 +579,12 @@ class MissionBehaviorTree(Node):
         )
         main_mission.add_child(takeoff_with_retry)
 
-        # Pool legs split into recon pools and one final sampling pool.
         normal_pool_colors = self.mission_pool_colors[:-1]
         final_pool_color = self.mission_pool_colors[-1]
 
         for color in normal_pool_colors:
             main_mission.add_child(self._make_normal_pool_task(color))
 
-        final_display_color = final_pool_color.capitalize()
         main_mission.add_child(self._make_final_pool_task(final_pool_color))
 
         return_to_base = ReturnToBase(
@@ -583,8 +619,36 @@ class MissionBehaviorTree(Node):
             node=self,
         )
         main_mission.add_child(post_mission_idle)
-        
-        root.add_children([safety_sequence, main_mission])
+        return main_mission
+
+    def create_behavior_tree(self):
+        root = py_trees.composites.Selector(name="Root", memory=False)
+
+        # [->] Branch 1: Safety (Sequence)
+        safety_sequence = py_trees.composites.Sequence(name="Safety", memory=False)
+        check_time = CheckTimeLimit(name="Check Mission Time > 9.5m")
+        # Invert the check_time so sequence continues ONLY if Time Limit check FAILS (i.e. > 9.5s)
+        time_limit_exceeded = py_trees.decorators.Inverter(name="Is Time Exceeded?", child=check_time)
+        rtl = ReturnToLaunch(
+            name="Return to Launch",
+            node=self,
+            target_hover_altitude_m=self.launch_hover_altitude_m,
+            position_tolerance_m=self.position_tolerance_m,
+        )
+        safety_sequence.add_children([time_limit_exceeded, rtl])
+
+        mission_profile_selector = py_trees.composites.Selector(
+            name="Mission Profile",
+            memory=False,
+        )
+        mission_profile_selector.add_children(
+            [
+                self._create_test_mission_sequence(),
+                self._create_full_mission_sequence(),
+            ]
+        )
+
+        root.add_children([safety_sequence, mission_profile_selector])
         return root
 
     def odometry_callback(self, msg):
