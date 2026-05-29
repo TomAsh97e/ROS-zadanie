@@ -59,6 +59,66 @@ class TestModeEnabled(py_trees.behaviour.Behaviour):
         return py_trees.common.Status.FAILURE
 
 
+class VerifyGimbalSearchConnection(py_trees.behaviour.Behaviour):
+    def __init__(self, name, node, timeout_s=3.0):
+        super().__init__(name)
+        self.node = node
+        self.timeout_s = max(float(timeout_s), 0.5)
+        self.start_ns = 0
+        self.initial_status = "STATUS_IDLE"
+        self._completed = False
+
+    def initialise(self):
+        self.start_ns = self.node.get_clock().now().nanoseconds
+        self.initial_status = str(
+            getattr(self.node.blackboard, "gimbal_status", "STATUS_IDLE")
+        ).upper()
+        self._completed = False
+        self.node.get_logger().info(
+            "Test mission: checking gimbal link with COMMAND_SEARCH."
+        )
+        self.node.set_gimbal_tracker_enabled(True)
+        self.node.send_gimbal_command("COMMAND_SEARCH")
+
+    def _finish_success(self):
+        self._completed = True
+        self.node.send_gimbal_command("COMMAND_IDLE")
+        self.node.set_gimbal_tracker_enabled(False)
+        return py_trees.common.Status.SUCCESS
+
+    def update(self):
+        if self._completed:
+            return py_trees.common.Status.SUCCESS
+
+        current_status = str(
+            getattr(self.node.blackboard, "gimbal_status", "STATUS_IDLE")
+        ).upper()
+        if current_status != self.initial_status:
+            self.node.get_logger().info(
+                "Test mission: gimbal status changed "
+                f"from {self.initial_status} to {current_status}."
+            )
+            return self._finish_success()
+
+        now_ns = self.node.get_clock().now().nanoseconds
+        if now_ns - self.start_ns >= int(self.timeout_s * 1e9):
+            self.node.get_logger().warn(
+                "Test mission: no gimbal status change after COMMAND_SEARCH "
+                f"within {self.timeout_s:.1f}s (status remained {current_status})."
+            )
+            return self._finish_success()
+
+        return py_trees.common.Status.RUNNING
+
+    def terminate(self, new_status):
+        if new_status in (
+            py_trees.common.Status.FAILURE,
+            py_trees.common.Status.INVALID,
+        ):
+            self.node.send_gimbal_command("COMMAND_IDLE")
+            self.node.set_gimbal_tracker_enabled(False)
+
+
 class MissionBehaviorTree(Node):
     def __init__(self):
         super().__init__('mission_behavior_tree')
@@ -95,6 +155,7 @@ class MissionBehaviorTree(Node):
         self.declare_parameter('launch_hover_altitude_m', 3.0)
         self.declare_parameter('test_mode', False)
         self.declare_parameter('test_takeoff_height_m', 1.0)
+        self.declare_parameter('test_gimbal_search_check_timeout_s', 3.0)
         self.declare_parameter('target_detected_timeout_s', 1.0)
         self.declare_parameter(
             'behavior_change_log_file',
@@ -208,6 +269,10 @@ class MissionBehaviorTree(Node):
         self.test_mode = bool(self.get_parameter('test_mode').value)
         self.test_takeoff_height_m = max(
             float(self.get_parameter('test_takeoff_height_m').value),
+            0.5,
+        )
+        self.test_gimbal_search_check_timeout_s = max(
+            float(self.get_parameter('test_gimbal_search_check_timeout_s').value),
             0.5,
         )
         self.target_detected_timeout_s = max(
@@ -527,6 +592,11 @@ class MissionBehaviorTree(Node):
                 TestModeEnabled(name="Test Mode Enabled?", node=self),
                 CheckOdometry(name="Check Odometry (Test)", node=self),
                 CheckPilotReady(name="Check Pilot Ready (Test)", node=self),
+                VerifyGimbalSearchConnection(
+                    name="Verify Gimbal Search Link (Test)",
+                    node=self,
+                    timeout_s=self.test_gimbal_search_check_timeout_s,
+                ),
                 py_trees.decorators.Retry(
                     name="Retry Test Takeoff",
                     child=Takeoff(

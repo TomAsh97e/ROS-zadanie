@@ -74,6 +74,7 @@ mission_behavior_tree:
     pool_yellow_y_m: 100.0
     test_mode: false
     test_takeoff_height_m: 1.0
+    test_gimbal_search_check_timeout_s: 3.0
     takeoff_height_m: 4.0
     forward_distance_m: 4.0
     position_tolerance_m: 0.35
