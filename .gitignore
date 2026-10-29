@@ -6,7 +6,6 @@ build/
 install/
 log/
 logs/
-px4_msgs
 
 # ==============================
 # Python Artifacts
