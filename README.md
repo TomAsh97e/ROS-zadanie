@@ -2,6 +2,8 @@
 
 Symulacja misji HydroLab: dron (PX4, model `x500_gimbal`) startuje z lądowiska, leci do kolorowych basenów, ustawia się nad nimi i pobiera próbki wody. Logika misji to pakiet ROS 2 w Pythonie.
 
+> **Zadanie rekrutacyjne:** opis tego, co jest do zrobienia, jest w [ZADANIE.md](ZADANIE.md). Ten plik opisuje, jak postawić i uruchomić symulację.
+
 ## Struktura repo
 
 | Ścieżka | Zawartość |
