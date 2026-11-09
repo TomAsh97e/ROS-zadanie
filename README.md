@@ -60,11 +60,11 @@ Biblioteka `py_trees` jest dołączona do pakietu misji, nie trzeba jej instalow
 
 ## Konfiguracja skryptu startowego
 
-Skrypt `SimWorld_hydrolab/launch_envhydrolab.sh` ma wpisane ścieżki z komputera autora. Przed pierwszym uruchomieniem zmień w nim:
+Skrypt `SimWorld_hydrolab/launch_envhydrolab.sh` wymaga dopasowania ścieżek przed uruchomieniem:
 
 - `PX4_ROOT` na katalog PX4-Autopilot,
-- `HYDROLAB_CONFIG_DIR` na `<repo>/runtime_config/hydrolab_mission`,
-- linię `source .../install/setup.bash` na `<repo>/install/setup.bash`.
+- `WORKSPACE_ROOT` na katalog repo,
+- `Q_GROUND_CONTROL_PATH` na ścieżkę do `QGroundControl.AppImage`.
 
 Generator świata `build_world.py` zapisuje `hydrolab_built.sdf` obok siebie i do katalogu światów PX4. Ten katalog wskaż zmienną środowiskową:
 
