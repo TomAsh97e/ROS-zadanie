@@ -15,6 +15,9 @@ export PX4_WORLDS_DIR="${PX4_WORLDS_DIR:-$PX4_ROOT/Tools/simulation/gz/worlds}"
 LAUNCH_MISSION="${LAUNCH_MISSION:-1}"
 export HYDROLAB_CONFIG_DIR="$REPO_ROOT/runtime_config/hydrolab_mission"
 
+source "$REPO_ROOT/install/setup.bash"
+echo -e "source $REPO_ROOT/install/setup.bash\n"
+
 # ==========================================
 # Preflight checks (before anything is started)
 # ==========================================
@@ -25,7 +28,7 @@ fail() {
 
 [ -d "$PX4_ROOT" ] || fail "PX4-Autopilot not found at '$PX4_ROOT'. Set PX4_ROOT=<path to PX4-Autopilot>."
 [ -d "$PX4_WORLDS_DIR" ] || fail "PX4 worlds directory not found at '$PX4_WORLDS_DIR'. Set PX4_WORLDS_DIR."
-command -v MicroXRCEAgent >/dev/null || fail "MicroXRCEAgent not found in PATH (see README: Micro XRCE-DDS Agent)."
+command -v MicroXRCEAgent >/dev/null || fail "MicroXRCEAgent not found (see README: Micro XRCE-DDS Agent)."
 
 if [ "$LAUNCH_MISSION" = "1" ]; then
     [ -f /opt/ros/jazzy/setup.bash ] || fail "ROS 2 Jazzy not found in /opt/ros/jazzy."
@@ -126,11 +129,10 @@ echo "========================================"
 if [ "$LAUNCH_MISSION" = "1" ]; then
     cd "$REPO_ROOT"
     source /opt/ros/jazzy/setup.bash
-    source "$REPO_ROOT/install/setup.bash"
     ros2 launch hydrolab_mission system_launch.py &
 else
     echo "LAUNCH_MISSION=0: mission not started. Start it in another terminal:"
-    echo "  source /opt/ros/jazzy/setup.bash && source $REPO_ROOT/install/setup.bash"
+    echo "  source /opt/ros/jazzy/setup.bash"
     echo "  ros2 launch hydrolab_mission system_launch.py config_dir:=$HYDROLAB_CONFIG_DIR"
 fi
 

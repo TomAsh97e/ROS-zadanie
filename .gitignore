@@ -46,3 +46,9 @@ Thumbs.db
 # ==============================
 # If you ever create standard ROS bags (recorded flight data), ignore them
 *.db3
+
+# ==============================
+# Analysis tools
+# ==============================
+# analyze_performance.sh saves analysis results here
+performance_analysis/
